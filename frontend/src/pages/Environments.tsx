@@ -252,8 +252,9 @@ export default function Environments() {
                   >
                     <DeleteIcon />
                   </IconButton>
-                  <IconButton 
+                  <Button
                     size="small"
+                    startIcon={<VpnKeyIcon />}
                     onClick={() => {
                       setSelectedEnvironment(env);
                       setVariablesDialogOpen(true);
@@ -262,12 +263,12 @@ export default function Environments() {
                       color: '#11998e',
                       '&:hover': {
                         backgroundColor: 'rgba(17, 153, 142, 0.1)',
-                        transform: 'scale(1.1)'
+                        transform: 'scale(1.05)'
                       }
                     }}
                   >
-                    <VpnKeyIcon />
-                  </IconButton>
+                    Variables
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}

@@ -6,7 +6,9 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import FlowEditor from './pages/FlowEditor';
 import TestRuns from './pages/TestRuns';
+import TestRunDetails from './pages/TestRunDetails';
 import Environments from './pages/Environments';
+import Projects from './pages/Projects';
 
 interface ThemeContextType {
   toggleColorMode: () => void;
@@ -205,9 +207,11 @@ function App() {
           <Layout>
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/projects" element={<Projects />} />
               <Route path="/flows/:id" element={<FlowEditor />} />
               <Route path="/flows/new" element={<FlowEditor />} />
               <Route path="/runs" element={<TestRuns />} />
+              <Route path="/runs/:runId" element={<TestRunDetails />} />
               <Route path="/environments" element={<Environments />} />
             </Routes>
           </Layout>

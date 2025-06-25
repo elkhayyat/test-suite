@@ -21,6 +21,9 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import SaveIcon from '@mui/icons-material/Save';
+import CancelIcon from '@mui/icons-material/Cancel';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import { Environment, EnvironmentVariable } from '../../../shared/src/types';
@@ -37,6 +40,7 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
   const [newVariable, setNewVariable] = useState({ key: '', value: '', isSecret: false });
   const [showSecrets, setShowSecrets] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [editingVariable, setEditingVariable] = useState<{ key: string; value: string } | null>(null);
 
   useEffect(() => {
     if (open && environment) {
@@ -85,6 +89,31 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
       } catch (error) {
         console.error('Failed to delete variable:', error);
       }
+    }
+  };
+
+  const handleStartEdit = (variable: EnvironmentVariable) => {
+    setEditingVariable({ key: variable.key, value: variable.value });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingVariable(null);
+  };
+
+  const handleSaveEdit = async (variable: EnvironmentVariable) => {
+    if (!environment || !editingVariable) return;
+    
+    try {
+      await api.setEnvironmentVariable(
+        environment.id,
+        variable.key,
+        editingVariable.value,
+        variable.isSecret
+      );
+      setEditingVariable(null);
+      loadVariables();
+    } catch (error) {
+      console.error('Failed to update variable:', error);
     }
   };
 
@@ -168,18 +197,58 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
                     {'{{'}{variable.key}{'}}'}
                   </TableCell>
                   <TableCell sx={{ fontFamily: 'monospace' }}>
-                    {displayValue(variable)}
+                    {editingVariable?.key === variable.key ? (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        type={variable.isSecret && !showSecrets ? 'password' : 'text'}
+                        value={editingVariable.value}
+                        onChange={(e) => setEditingVariable({ ...editingVariable, value: e.target.value })}
+                        sx={{ fontFamily: 'monospace' }}
+                      />
+                    ) : (
+                      displayValue(variable)
+                    )}
                   </TableCell>
                   <TableCell>
                     {variable.isSecret ? 'Secret' : 'Plain'}
                   </TableCell>
                   <TableCell>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDeleteVariable(variable.key)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                    {editingVariable?.key === variable.key ? (
+                      <>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleSaveEdit(variable)}
+                          sx={{ color: '#66bb6a' }}
+                        >
+                          <SaveIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={handleCancelEdit}
+                          sx={{ color: '#f5576c' }}
+                        >
+                          <CancelIcon />
+                        </IconButton>
+                      </>
+                    ) : (
+                      <>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleStartEdit(variable)}
+                          sx={{ color: '#667eea' }}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteVariable(variable.key)}
+                          sx={{ color: '#f5576c' }}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

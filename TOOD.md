@@ -21,10 +21,20 @@
 - [ ] ability to delete flows.
 - [ ] ability to delete steps.
 - [ ] add right click menu to steps for duplicate, delete, copy, paste.
+- [ ] multi-tenants, each tenant can invite users.
 
 # Bugs
 - [x] nothing happens when clicking on show test runs.
 - [x] STEP ID is not visible.
 - [x] Can't write into headers or body fields
-- [ ] there is no option to edit environment variables.
-- [ ] can't find projects or folders.
+- [x] there is no option to edit environment variables.
+- [x] can't find projects or folders.
+- [x] can't view test runs details.
+- [x] i can add / remove environment variables but can't edit existing ones.
+- [ ] i can not edit environment variable name.
+
+
+# TODOs
+- [x] folders should be always visible under project, also if the project have flows without folders.
+- [ ] ability to rename folders.
+- [ ] drag and drop flows between folders and projects.

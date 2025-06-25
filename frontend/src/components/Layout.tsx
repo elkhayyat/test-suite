@@ -37,6 +37,7 @@ export default function Layout({ children }: LayoutProps) {
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+    { text: 'Projects', icon: <AccountTreeIcon />, path: '/projects' },
     { text: 'Test Runs', icon: <PlayArrowIcon />, path: '/runs' },
     { text: 'Environments', icon: <SettingsIcon />, path: '/environments' },
   ];

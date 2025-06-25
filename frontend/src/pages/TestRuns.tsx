@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -25,6 +26,7 @@ import { useSocket } from '../hooks/useSocket';
 import StatusIndicator from '../components/StatusIndicator';
 
 export default function TestRuns() {
+  const navigate = useNavigate();
   const [runs, setRuns] = useState<TestRun[]>([]);
   const socket = useSocket();
 
@@ -201,7 +203,17 @@ export default function TestRuns() {
                       <StopIcon />
                     </IconButton>
                   )}
-                  <IconButton size="small">
+                  <IconButton 
+                    size="small"
+                    onClick={() => navigate(`/runs/${run.id}`)}
+                    sx={{
+                      color: '#667eea',
+                      '&:hover': {
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        transform: 'scale(1.1)'
+                      }
+                    }}
+                  >
                     <VisibilityIcon />
                   </IconButton>
                 </TableCell>
