@@ -4,13 +4,18 @@ import axios from 'axios';
 import { chromium, Browser, Page } from 'playwright';
 import { TestRun, TestFlow, TestStep, StepResult } from '../../../shared/src/types';
 import { FlowStore } from './FlowStore';
+import { EnvironmentStore } from './EnvironmentStore';
+import { VariableInterpolator } from './VariableInterpolator';
 
 export class TestRunner {
   private runs: Map<string, TestRun> = new Map();
   private browser: Browser | null = null;
   private activeRuns: Set<string> = new Set();
+  private environmentStore: EnvironmentStore;
 
-  constructor(private io: Server, private flowStore: FlowStore) {}
+  constructor(private io: Server, private flowStore: FlowStore) {
+    this.environmentStore = new EnvironmentStore();
+  }
 
   getAllRuns(): TestRun[] {
     return Array.from(this.runs.values());
@@ -20,15 +25,23 @@ export class TestRunner {
     return this.runs.get(id);
   }
 
-  async startRun(flowId: string): Promise<string> {
+  async startRun(flowId: string, environmentId?: string): Promise<string> {
     const flow = this.flowStore.getFlow(flowId);
     if (!flow) {
       throw new Error('Flow not found');
     }
 
+    // If no environment specified, use the default
+    if (!environmentId) {
+      const environments = await this.environmentStore.getEnvironments();
+      const defaultEnv = environments.find(e => e.isDefault);
+      environmentId = defaultEnv?.id || 'default';
+    }
+
     const run: TestRun = {
       id: uuidv4(),
       flowId,
+      environmentId,
       status: 'running',
       startTime: new Date(),
       results: [],
@@ -38,7 +51,7 @@ export class TestRunner {
     this.activeRuns.add(run.id);
     this.io.emit('run:started', run);
 
-    this.executeFlow(run.id, flow).catch(error => {
+    this.executeFlow(run.id, flow, environmentId).catch(error => {
       console.error('Flow execution error:', error);
       this.updateRunStatus(run.id, 'failed');
     });
@@ -56,7 +69,11 @@ export class TestRunner {
     return true;
   }
 
-  private async executeFlow(runId: string, flow: TestFlow) {
+  private async executeFlow(runId: string, flow: TestFlow, environmentId: string) {
+    // Load environment variables
+    const variables = await this.environmentStore.getEnvironmentVariables(environmentId);
+    const interpolator = new VariableInterpolator(variables);
+    
     const executionOrder = this.calculateExecutionOrder(flow);
     let page: Page | null = null;
 
@@ -69,7 +86,13 @@ export class TestRunner {
         const step = flow.steps.find(s => s.id === stepId);
         if (!step) continue;
 
-        const result = await this.executeStep(step, page);
+        // Interpolate variables in step config
+        const interpolatedStep = {
+          ...step,
+          config: interpolator.interpolateStepConfig(step.config)
+        };
+
+        const result = await this.executeStep(interpolatedStep, page);
         
         if (step.type === 'browser' && !page && this.browser) {
           page = await this.browser.newPage();

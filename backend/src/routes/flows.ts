@@ -17,21 +17,21 @@ flowRoutes.get('/:id', (req, res) => {
   res.json(flow);
 });
 
-flowRoutes.post('/', (req, res) => {
-  const flow = flowStore.createFlow(req.body);
+flowRoutes.post('/', async (req, res) => {
+  const flow = await flowStore.createFlow(req.body);
   res.status(201).json(flow);
 });
 
-flowRoutes.put('/:id', (req, res) => {
-  const flow = flowStore.updateFlow(req.params.id, req.body);
+flowRoutes.put('/:id', async (req, res) => {
+  const flow = await flowStore.updateFlow(req.params.id, req.body);
   if (!flow) {
     return res.status(404).json({ error: 'Flow not found' });
   }
   res.json(flow);
 });
 
-flowRoutes.delete('/:id', (req, res) => {
-  const success = flowStore.deleteFlow(req.params.id);
+flowRoutes.delete('/:id', async (req, res) => {
+  const success = await flowStore.deleteFlow(req.params.id);
   if (!success) {
     return res.status(404).json({ error: 'Flow not found' });
   }

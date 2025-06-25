@@ -1,10 +1,12 @@
 import React from 'react';
-import { Box, Paper, Typography, List, ListItem, ListItemIcon, ListItemText } from '@mui/material';
+import { Box, Paper, Typography, List, ListItem, ListItemIcon, ListItemText, Divider, Chip } from '@mui/material';
 import HttpIcon from '@mui/icons-material/Http';
 import WebIcon from '@mui/icons-material/Web';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TimerIcon from '@mui/icons-material/Timer';
 import CodeIcon from '@mui/icons-material/Code';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { TestStep } from '../../../shared/src/types';
 
 interface StepPanelProps {
@@ -22,17 +24,44 @@ export default function StepPanel({ onAddStep }: StepPanelProps) {
 
   return (
     <Paper sx={{ width: 240, p: 2, mr: 2 }}>
-      <Typography variant="h6" gutterBottom>
-        Step Types
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <AddCircleOutlineIcon color="primary" />
+        <Typography variant="h6">
+          Add Steps
+        </Typography>
+      </Box>
+      <Divider sx={{ mb: 2 }} />
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+        <DragIndicatorIcon fontSize="small" />
+        Drag to flow editor
       </Typography>
       <List>
-        {stepTypes.map((stepType) => (
+        {stepTypes.map((stepType, index) => (
           <ListItem
             key={stepType.type}
             button
             onClick={() => onAddStep(stepType.type)}
+            className="animate-slideInLeft"
+            sx={{ 
+              borderRadius: 1,
+              mb: 1,
+              animationDelay: `${index * 0.1}s`,
+              animationFillMode: 'both',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                backgroundColor: (theme) => theme.palette.mode === 'dark' 
+                  ? 'rgba(255,255,255,0.08)' 
+                  : 'rgba(0,0,0,0.04)',
+                transform: 'translateX(5px)',
+              },
+              '&:hover .MuiListItemIcon-root': {
+                transform: 'scale(1.2) rotate(10deg)',
+              }
+            }}
           >
-            <ListItemIcon>{stepType.icon}</ListItemIcon>
+            <ListItemIcon sx={{ transition: 'transform 0.3s ease' }}>
+              {stepType.icon}
+            </ListItemIcon>
             <ListItemText primary={stepType.label} />
           </ListItem>
         ))}

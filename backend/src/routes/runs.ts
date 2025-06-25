@@ -18,13 +18,13 @@ export const runRoutes = (testRunner: TestRunner) => {
   });
 
   router.post('/', async (req, res) => {
-    const { flowId } = req.body;
+    const { flowId, environmentId } = req.body;
     if (!flowId) {
       return res.status(400).json({ error: 'flowId is required' });
     }
     
     try {
-      const runId = await testRunner.startRun(flowId);
+      const runId = await testRunner.startRun(flowId, environmentId);
       res.status(201).json({ runId });
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });

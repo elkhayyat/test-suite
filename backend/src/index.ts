@@ -4,6 +4,8 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { flowRoutes, flowStore } from './routes/flows';
 import { runRoutes } from './routes/runs';
+import { environmentRoutes } from './routes/environments';
+import { projectRoutes } from './routes/projects';
 import { TestRunner } from './services/TestRunner';
 
 const app = express();
@@ -22,6 +24,8 @@ const testRunner = new TestRunner(io, flowStore);
 
 app.use('/api/flows', flowRoutes);
 app.use('/api/runs', runRoutes(testRunner));
+app.use('/api/environments', environmentRoutes);
+app.use('/api/projects', projectRoutes);
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);

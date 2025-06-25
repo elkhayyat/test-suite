@@ -8,6 +8,8 @@ export interface TestStep {
 
 export interface TestFlow {
   id: string;
+  projectId?: string;
+  folderId?: string;
   name: string;
   description?: string;
   steps: TestStep[];
@@ -27,6 +29,7 @@ export interface Connection {
 export interface TestRun {
   id: string;
   flowId: string;
+  environmentId?: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   startTime: Date;
   endTime?: Date;
@@ -73,4 +76,67 @@ export interface ConditionStepConfig {
   script: string;
   trueTarget?: string;
   falseTarget?: string;
+}
+
+export interface Environment {
+  id: string;
+  name: string;
+  description?: string;
+  isDefault: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface EnvironmentVariable {
+  id: string;
+  environmentId: string;
+  key: string;
+  value: string;
+  isSecret: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FlowEnvironmentConfig {
+  id: string;
+  flowId: string;
+  environmentId: string;
+  stepId: string;
+  configOverrides: Record<string, any>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Folder {
+  id: string;
+  projectId: string;
+  parentId?: string;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'developer' | 'tester' | 'viewer';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ProjectUser {
+  id: string;
+  projectId: string;
+  userId: string;
+  role: 'owner' | 'admin' | 'member' | 'viewer';
+  createdAt: Date;
 }

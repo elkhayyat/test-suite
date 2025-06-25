@@ -12,13 +12,21 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import FolderIcon from '@mui/icons-material/Folder';
+import DescriptionIcon from '@mui/icons-material/Description';
+import LayersIcon from '@mui/icons-material/Layers';
+import DeleteIcon from '@mui/icons-material/Delete';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useNavigate } from 'react-router-dom';
 import { TestFlow } from '../../../shared/src/types';
 import { api } from '../services/api';
+import EnvironmentSelector from '../components/EnvironmentSelector';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [flows, setFlows] = useState<TestFlow[]>([]);
+  const [selectedEnvironment, setSelectedEnvironment] = useState<string>('');
 
   useEffect(() => {
     loadFlows();
@@ -35,33 +43,79 @@ export default function Dashboard() {
 
   const handleRunFlow = async (flowId: string) => {
     try {
-      const { runId } = await api.startRun(flowId);
+      const { runId } = await api.startRun(flowId, selectedEnvironment);
       navigate('/runs');
     } catch (error) {
       console.error('Failed to start run:', error);
     }
   };
 
+  const handleDuplicateFlow = async (flow: TestFlow) => {
+    try {
+      const duplicatedFlow = await api.createFlow({
+        ...flow,
+        id: undefined,
+        name: `${flow.name} (Copy)`,
+        createdAt: undefined,
+        updatedAt: undefined,
+      });
+      loadFlows(); // Reload flows to show the duplicate
+    } catch (error) {
+      console.error('Failed to duplicate flow:', error);
+    }
+  };
+
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Test Flows
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">
+          Test Flows
+        </Typography>
+        <EnvironmentSelector 
+          value={selectedEnvironment}
+          onChange={setSelectedEnvironment}
+        />
+      </Box>
       
       <Grid container spacing={3}>
-        {flows.map((flow) => (
+        {flows.map((flow, index) => (
           <Grid item xs={12} sm={6} md={4} key={flow.id}>
-            <Card>
+            <Card 
+              className="animate-fadeIn hover-lift"
+              sx={{ 
+                animationDelay: `${index * 0.1}s`,
+                animationFillMode: 'both'
+              }}>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  {flow.name}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {flow.description || 'No description'}
-                </Typography>
-                <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                  Steps: {flow.steps.length}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Box 
+                    className="gradient-primary"
+                    sx={{ 
+                      p: 0.5, 
+                      borderRadius: 1, 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <FolderIcon sx={{ color: 'white', fontSize: 20 }} />
+                  </Box>
+                  <Typography variant="h6">
+                    {flow.name}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                  <DescriptionIcon fontSize="small" color="action" />
+                  <Typography variant="body2" color="text.secondary">
+                    {flow.description || 'No description'}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+                  <LayersIcon fontSize="small" color="action" />
+                  <Typography variant="caption" color="text.secondary">
+                    {flow.steps.length} steps
+                  </Typography>
+                </Box>
               </CardContent>
               <CardActions>
                 <Button 
@@ -70,6 +124,13 @@ export default function Dashboard() {
                   onClick={() => navigate(`/flows/${flow.id}`)}
                 >
                   Edit
+                </Button>
+                <Button 
+                  size="small" 
+                  startIcon={<ContentCopyIcon />}
+                  onClick={() => handleDuplicateFlow(flow)}
+                >
+                  Duplicate
                 </Button>
                 <Button 
                   size="small" 
@@ -86,9 +147,20 @@ export default function Dashboard() {
       </Grid>
 
       <Fab
-        color="primary"
         aria-label="add"
-        sx={{ position: 'fixed', bottom: 16, right: 16 }}
+        className="animate-scaleIn gradient-primary"
+        sx={{ 
+          position: 'fixed', 
+          bottom: 16, 
+          right: 16,
+          transition: 'all 0.3s ease',
+          color: 'white',
+          border: '2px solid rgba(255,255,255,0.3)',
+          '&:hover': {
+            transform: 'scale(1.1) rotate(90deg)',
+            boxShadow: '0 8px 32px rgba(102, 126, 234, 0.4)',
+          }
+        }}
         onClick={() => navigate('/flows/new')}
       >
         <AddIcon />

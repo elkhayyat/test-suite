@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   TextField,
@@ -19,6 +19,17 @@ interface StepConfigPanelProps {
 }
 
 export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigPanelProps) {
+  const [headersText, setHeadersText] = useState('');
+  const [bodyText, setBodyText] = useState('');
+  
+  useEffect(() => {
+    if (step.type === 'http') {
+      const config = step.config as HttpStepConfig;
+      setHeadersText(config.headers ? JSON.stringify(config.headers, null, 2) : '{}');
+      setBodyText(config.body ? JSON.stringify(config.body, null, 2) : '');
+    }
+  }, [step]);
+
   const handleChange = (field: string, value: any) => {
     onUpdate({
       ...step,
@@ -64,28 +75,42 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
         <TextField
           fullWidth
           label="Headers (JSON)"
-          value={config.headers ? JSON.stringify(config.headers, null, 2) : ''}
-          onChange={(e) => {
+          value={headersText}
+          onChange={(e) => setHeadersText(e.target.value)}
+          onBlur={() => {
             try {
-              handleChange('headers', JSON.parse(e.target.value));
-            } catch {}
+              const parsed = JSON.parse(headersText || '{}');
+              handleChange('headers', parsed);
+            } catch (e) {
+              // Keep the text as is if invalid JSON
+            }
           }}
           multiline
           rows={3}
           margin="normal"
+          helperText='Enter headers as JSON object, e.g., {"Authorization": "Bearer token"}'
         />
         <TextField
           fullWidth
           label="Body (JSON)"
-          value={config.body ? JSON.stringify(config.body, null, 2) : ''}
-          onChange={(e) => {
+          value={bodyText}
+          onChange={(e) => setBodyText(e.target.value)}
+          onBlur={() => {
             try {
-              handleChange('body', JSON.parse(e.target.value));
-            } catch {}
+              if (bodyText.trim()) {
+                const parsed = JSON.parse(bodyText);
+                handleChange('body', parsed);
+              } else {
+                handleChange('body', null);
+              }
+            } catch (e) {
+              // Keep the text as is if invalid JSON
+            }
           }}
           multiline
           rows={4}
           margin="normal"
+          helperText="Enter request body as JSON"
         />
         <TextField
           fullWidth
@@ -265,6 +290,17 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
         <Typography variant="h6">Step Configuration</Typography>
         <Button size="small" onClick={onClose}>Close</Button>
       </Box>
+      
+      <TextField
+        fullWidth
+        label="Step ID"
+        value={step.id}
+        disabled
+        margin="normal"
+        InputProps={{
+          style: { fontFamily: 'monospace' }
+        }}
+      />
       
       <TextField
         fullWidth
