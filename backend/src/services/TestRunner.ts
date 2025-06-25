@@ -7,11 +7,10 @@ import { FlowStore } from './FlowStore';
 
 export class TestRunner {
   private runs: Map<string, TestRun> = new Map();
-  private flowStore = new FlowStore();
   private browser: Browser | null = null;
   private activeRuns: Set<string> = new Set();
 
-  constructor(private io: Server) {}
+  constructor(private io: Server, private flowStore: FlowStore) {}
 
   getAllRuns(): TestRun[] {
     return Array.from(this.runs.values());

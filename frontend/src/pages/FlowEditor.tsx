@@ -17,6 +17,7 @@ import { TestFlow, TestStep } from '../../../shared/src/types';
 import { api } from '../services/api';
 import StepPanel from '../components/StepPanel';
 import StepNode from '../components/StepNode';
+import StepConfigPanel from '../components/StepConfigPanel';
 
 const nodeTypes = {
   testStep: StepNode,
@@ -74,6 +75,14 @@ export default function FlowEditor() {
     setSelectedNode(node);
   }, []);
 
+  const onNodesDelete = useCallback((deleted: Node[]) => {
+    deleted.forEach(node => {
+      if (selectedNode && selectedNode.id === node.id) {
+        setSelectedNode(null);
+      }
+    });
+  }, [selectedNode]);
+
   const handleAddStep = (type: TestStep['type']) => {
     const newNode: Node = {
       id: `${Date.now()}`,
@@ -98,6 +107,9 @@ export default function FlowEditor() {
         return node;
       })
     );
+    if (selectedNode && selectedNode.id === nodeId) {
+      setSelectedNode({ ...selectedNode, data });
+    }
   };
 
   const handleSave = async () => {
@@ -167,7 +179,9 @@ export default function FlowEditor() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
+            onNodesDelete={onNodesDelete}
             nodeTypes={nodeTypes}
+            deleteKeyCode="Delete"
           >
             <Controls />
             <MiniMap />
@@ -176,11 +190,12 @@ export default function FlowEditor() {
         </Box>
 
         {selectedNode && (
-          <Box sx={{ width: 300, p: 2, borderLeft: 1, borderColor: 'divider' }}>
-            <Typography variant="h6" gutterBottom>
-              Step Configuration
-            </Typography>
-            {/* Step configuration form would go here */}
+          <Box sx={{ width: 350, p: 2, borderLeft: 1, borderColor: 'divider', overflow: 'auto' }}>
+            <StepConfigPanel
+              step={selectedNode.data}
+              onUpdate={(updatedStep) => handleUpdateNode(selectedNode.id, updatedStep)}
+              onClose={() => setSelectedNode(null)}
+            />
           </Box>
         )}
       </Box>

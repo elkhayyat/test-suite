@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { FlowStore } from '../services/FlowStore';
 
+export const flowStore = new FlowStore();
 export const flowRoutes = Router();
-const flowStore = new FlowStore();
 
 flowRoutes.get('/', (req, res) => {
   const flows = flowStore.getAllFlows();

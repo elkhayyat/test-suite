@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { flowRoutes } from './routes/flows';
+import { flowRoutes, flowStore } from './routes/flows';
 import { runRoutes } from './routes/runs';
 import { TestRunner } from './services/TestRunner';
 
@@ -18,7 +18,7 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
-const testRunner = new TestRunner(io);
+const testRunner = new TestRunner(io, flowStore);
 
 app.use('/api/flows', flowRoutes);
 app.use('/api/runs', runRoutes(testRunner));

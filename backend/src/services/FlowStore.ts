@@ -1,8 +1,16 @@
 import { v4 as uuidv4 } from 'uuid';
 import { TestFlow } from '../../../shared/src/types';
+import { sampleFlows } from './SampleFlows';
 
 export class FlowStore {
   private flows: Map<string, TestFlow> = new Map();
+
+  constructor() {
+    // Load sample flows
+    sampleFlows.forEach(flow => {
+      this.flows.set(flow.id, flow);
+    });
+  }
 
   getAllFlows(): TestFlow[] {
     return Array.from(this.flows.values());
