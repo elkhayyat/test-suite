@@ -19,11 +19,31 @@ export class VariableInterpolator {
     if (typeof str !== 'string') return str;
     
     console.log('Interpolating string:', str);
+    
+    // Check for unresolved variables before attempting interpolation
+    const unresolvedVars: string[] = [];
+    const variableMatches = str.match(/\{\{(\w+)\}\}/g);
+    
+    if (variableMatches) {
+      for (const match of variableMatches) {
+        const varName = match.replace(/[{}]/g, '');
+        if (!this.variables.has(varName)) {
+          unresolvedVars.push(varName);
+        }
+      }
+    }
+    
+    // If there are unresolved variables, throw an error with details
+    if (unresolvedVars.length > 0) {
+      const availableVars = Array.from(this.variables.keys()).join(', ');
+      throw new Error(`Unresolved variables found: ${unresolvedVars.join(', ')}. Available variables: ${availableVars || 'none'}`);
+    }
+    
     // Replace all occurrences of {{variable}} with their values
     const result = str.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
       const value = this.variables.get(varName);
       console.log(`Variable ${varName}: ${value !== undefined ? 'found' : 'NOT FOUND'} - value: ${value || 'undefined'}`);
-      return value !== undefined ? value : match; // Keep original if not found
+      return value !== undefined ? value : match; // This should never hit the fallback now
     });
     console.log('Interpolation result:', result);
     return result;

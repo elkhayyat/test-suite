@@ -236,15 +236,9 @@ export class TestRunner {
   private async executeHttpStep(step: TestStep): Promise<any> {
     const config = step.config;
     
-    // Validate that URL doesn't contain unresolved variables
+    // Validate that URL is provided and is a string
     if (!config.url || typeof config.url !== 'string') {
       throw new Error('URL is required and must be a string');
-    }
-    
-    // Check for unresolved variables in URL
-    const unresolvedVariables = config.url.match(/\{\{(\w+)\}\}/g);
-    if (unresolvedVariables) {
-      throw new Error(`URL contains unresolved variables: ${unresolvedVariables.join(', ')}`);
     }
     
     // Validate URL format
@@ -254,6 +248,8 @@ export class TestRunner {
       throw new Error(`Invalid URL format: ${config.url}`);
     }
     
+    console.log(`Making HTTP ${config.method || 'GET'} request to: ${config.url}`);
+    
     const response = await axios({
       method: config.method || 'GET',
       url: config.url,
@@ -262,6 +258,8 @@ export class TestRunner {
       timeout: config.timeout || 30000,
       validateStatus: config.validateStatus || (() => true),
     });
+
+    console.log(`HTTP request completed with status: ${response.status}`);
 
     return {
       status: response.status,

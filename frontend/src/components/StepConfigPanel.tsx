@@ -10,9 +10,18 @@ import {
   Typography,
   Divider,
   Autocomplete,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  Snackbar,
+  Tooltip,
 } from '@mui/material';
+import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 import { TestStep, HttpStepConfig, BrowserStepConfig, AssertionStepConfig, DelayStepConfig, ConditionStepConfig, SqlStepConfig, SubflowStepConfig, TestFlow } from '../../../shared/src/types';
 import { api } from '../services/api';
+import { parseCurlCommand, generateCurlCommand } from '../utils/curlParser';
 
 interface StepConfigPanelProps {
   step: TestStep;
@@ -24,6 +33,10 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
   const [headersText, setHeadersText] = useState('');
   const [bodyText, setBodyText] = useState('');
   const [availableFlows, setAvailableFlows] = useState<TestFlow[]>([]);
+  const [curlDialogOpen, setCurlDialogOpen] = useState(false);
+  const [curlCommand, setCurlCommand] = useState('');
+  const [curlError, setCurlError] = useState('');
+  const [curlSuccess, setCurlSuccess] = useState(false);
   
   useEffect(() => {
     if (step.type === 'http') {
@@ -61,6 +74,49 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
     });
   };
 
+  const handleCurlImport = () => {
+    try {
+      const parsed = parseCurlCommand(curlCommand);
+      
+      // Update the step with parsed data
+      onUpdate({
+        ...step,
+        config: {
+          method: parsed.method,
+          url: parsed.url,
+          headers: parsed.headers,
+          body: parsed.body,
+          timeout: parsed.timeout || 30000,
+        },
+      });
+
+      // Update UI state
+      setHeadersText(JSON.stringify(parsed.headers, null, 2));
+      setBodyText(parsed.body ? (typeof parsed.body === 'string' ? parsed.body : JSON.stringify(parsed.body, null, 2)) : '');
+      
+      setCurlDialogOpen(false);
+      setCurlCommand('');
+      setCurlError('');
+      setCurlSuccess(true);
+      
+      setTimeout(() => setCurlSuccess(false), 3000);
+    } catch (error) {
+      setCurlError((error as Error).message);
+    }
+  };
+
+  const handleCurlExport = () => {
+    try {
+      const config = step.config as HttpStepConfig;
+      const curlCmd = generateCurlCommand(config);
+      navigator.clipboard.writeText(curlCmd);
+      setCurlSuccess(true);
+      setTimeout(() => setCurlSuccess(false), 3000);
+    } catch (error) {
+      setCurlError('Failed to generate curl command');
+    }
+  };
+
   const renderHttpConfig = () => {
     const config = step.config as HttpStepConfig;
     return (
@@ -79,6 +135,31 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
             <MenuItem value="PATCH">PATCH</MenuItem>
           </Select>
         </FormControl>
+        
+        {/* Curl Import/Export Controls */}
+        <Box sx={{ display: 'flex', gap: 1, my: 1 }}>
+          <Tooltip title="Import from curl command">
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ContentPasteIcon />}
+              onClick={() => setCurlDialogOpen(true)}
+            >
+              Import from curl
+            </Button>
+          </Tooltip>
+          <Tooltip title="Copy as curl command">
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleCurlExport}
+              disabled={!config.url}
+            >
+              Export to curl
+            </Button>
+          </Tooltip>
+        </Box>
+        
         <TextField
           fullWidth
           label="URL"
@@ -461,6 +542,56 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
       <Divider sx={{ my: 2 }} />
       
       {renderConfig()}
+
+      {/* Curl Import Dialog */}
+      <Dialog open={curlDialogOpen} onClose={() => setCurlDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Import from curl Command</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            rows={8}
+            label="Paste curl command here"
+            value={curlCommand}
+            onChange={(e) => {
+              setCurlCommand(e.target.value);
+              setCurlError(''); // Clear error when user types
+            }}
+            margin="normal"
+            placeholder={`curl -X POST "https://api.example.com/users" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer your-token" \\
+  -d '{"name":"John","email":"john@example.com"}'`}
+            helperText="Paste any curl command and it will be parsed into the HTTP step configuration"
+          />
+          {curlError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {curlError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCurlDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleCurlImport} 
+            variant="contained"
+            disabled={!curlCommand.trim()}
+          >
+            Import
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Success/Error Snackbar */}
+      <Snackbar
+        open={curlSuccess}
+        autoHideDuration={3000}
+        onClose={() => setCurlSuccess(false)}
+      >
+        <Alert severity="success" onClose={() => setCurlSuccess(false)}>
+          {curlDialogOpen ? 'curl command imported successfully!' : 'curl command copied to clipboard!'}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
