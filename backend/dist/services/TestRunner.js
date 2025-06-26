@@ -27,8 +27,8 @@ class TestRunner {
     getRun(id) {
         return this.runs.get(id);
     }
-    async startRun(flowId, environmentId) {
-        const flow = this.flowStore.getFlow(flowId);
+    async startRun(flowId, environmentId, selectedSteps) {
+        const flow = await this.flowStore.getFlow(flowId);
         if (!flow) {
             throw new Error('Flow not found');
         }
@@ -49,7 +49,7 @@ class TestRunner {
         this.runs.set(run.id, run);
         this.activeRuns.add(run.id);
         this.io.emit('run:started', run);
-        this.executeFlow(run.id, flow, environmentId).catch(error => {
+        this.executeFlow(run.id, flow, environmentId, selectedSteps).catch(error => {
             console.error('Flow execution error:', error);
             this.updateRunStatus(run.id, 'failed');
         });
@@ -63,11 +63,15 @@ class TestRunner {
         this.updateRunStatus(runId, 'failed');
         return true;
     }
-    async executeFlow(runId, flow, environmentId) {
+    async executeFlow(runId, flow, environmentId, selectedSteps) {
         // Load environment variables
         const variables = await this.environmentStore.getEnvironmentVariables(environmentId);
         const interpolator = new VariableInterpolator_1.VariableInterpolator(variables);
-        const executionOrder = this.calculateExecutionOrder(flow);
+        let executionOrder = this.calculateExecutionOrder(flow);
+        // If selectedSteps is provided, filter to only run those steps
+        if (selectedSteps && selectedSteps.length > 0) {
+            executionOrder = executionOrder.filter(stepId => selectedSteps.includes(stepId));
+        }
         let page = null;
         try {
             for (const stepId of executionOrder) {
@@ -82,19 +86,26 @@ class TestRunner {
                     ...step,
                     config: interpolator.interpolateStepConfig(step.config)
                 };
-                const result = await this.executeStep(interpolatedStep, page);
-                if (step.type === 'browser' && !page && this.browser) {
+                // Create browser page if needed for browser steps
+                if (step.type === 'browser' && !page) {
+                    if (!this.browser) {
+                        this.browser = await playwright_1.chromium.launch();
+                    }
                     page = await this.browser.newPage();
                 }
+                const result = await this.executeStep(interpolatedStep, page);
                 this.addStepResult(runId, result);
-                this.io.emit('step:completed', { runId, result });
+                this.io.emit('step:updated', { runId, stepId: result.stepId, result });
                 if (result.status === 'failed') {
                     this.updateRunStatus(runId, 'failed');
                     break;
                 }
             }
             if (this.activeRuns.has(runId)) {
-                this.updateRunStatus(runId, 'completed');
+                // Check if any step failed
+                const run = this.runs.get(runId);
+                const hasFailed = run?.results?.some(r => r.status === 'failed');
+                this.updateRunStatus(runId, hasFailed ? 'failed' : 'completed');
             }
         }
         finally {
@@ -105,29 +116,52 @@ class TestRunner {
         }
     }
     calculateExecutionOrder(flow) {
-        const visited = new Set();
-        const order = [];
+        // If no connections exist, execute all steps in order
+        if (flow.connections.length === 0) {
+            return flow.steps.map(step => step.id);
+        }
+        // Use Kahn's algorithm for topological sorting
+        const inDegree = new Map();
         const adjacencyList = new Map();
-        flow.connections.forEach(conn => {
-            if (!adjacencyList.has(conn.source)) {
-                adjacencyList.set(conn.source, []);
-            }
-            adjacencyList.get(conn.source).push(conn.target);
-        });
-        const dfs = (stepId) => {
-            if (visited.has(stepId))
-                return;
-            visited.add(stepId);
-            const neighbors = adjacencyList.get(stepId) || [];
-            neighbors.forEach(neighbor => dfs(neighbor));
-            order.unshift(stepId);
-        };
+        const order = [];
+        // Initialize in-degree for all steps
         flow.steps.forEach(step => {
-            if (!visited.has(step.id)) {
-                dfs(step.id);
+            inDegree.set(step.id, 0);
+            adjacencyList.set(step.id, []);
+        });
+        // Build adjacency list and calculate in-degrees
+        flow.connections.forEach(conn => {
+            adjacencyList.get(conn.source).push(conn.target);
+            inDegree.set(conn.target, (inDegree.get(conn.target) || 0) + 1);
+        });
+        // Find all nodes with no incoming edges
+        const queue = [];
+        inDegree.forEach((degree, stepId) => {
+            if (degree === 0) {
+                queue.push(stepId);
             }
         });
-        return order.reverse();
+        // Process queue
+        while (queue.length > 0) {
+            const current = queue.shift();
+            order.push(current);
+            // For each neighbor of current node
+            const neighbors = adjacencyList.get(current) || [];
+            neighbors.forEach(neighbor => {
+                // Decrease in-degree by 1
+                const newDegree = (inDegree.get(neighbor) || 0) - 1;
+                inDegree.set(neighbor, newDegree);
+                // If in-degree becomes 0, add to queue
+                if (newDegree === 0) {
+                    queue.push(neighbor);
+                }
+            });
+        }
+        // Check for circular dependencies
+        if (order.length !== flow.steps.length) {
+            throw new Error('Circular dependency detected in flow');
+        }
+        return order;
     }
     async executeStep(step, page) {
         const result = {
@@ -151,6 +185,9 @@ class TestRunner {
                     break;
                 case 'assertion':
                     await this.executeAssertionStep(step, result);
+                    break;
+                case 'sql':
+                    result.output = await this.executeSqlStep(step);
                     break;
             }
             result.status = 'passed';
@@ -229,6 +266,44 @@ class TestRunner {
                 }
                 break;
         }
+    }
+    async executeSqlStep(step) {
+        const config = step.config;
+        // Note: This is a simplified implementation. In production, you would want to:
+        // 1. Support multiple database types (MySQL, PostgreSQL, SQL Server, etc.)
+        // 2. Use proper connection pooling
+        // 3. Handle prepared statements securely
+        // 4. Support variable interpolation
+        // For now, we'll return a mock result to demonstrate the functionality
+        console.log('Executing SQL query:', {
+            connectionString: config.connectionString,
+            query: config.query,
+            parameters: config.parameters
+        });
+        // Mock result
+        return {
+            rows: [
+                { id: 1, name: 'Test Record 1', created_at: new Date() },
+                { id: 2, name: 'Test Record 2', created_at: new Date() }
+            ],
+            rowCount: 2,
+            executionTime: 45,
+            query: config.query
+        };
+        // TODO: Implement actual SQL execution
+        // Example implementation with pg (PostgreSQL):
+        // const client = new Client({ connectionString: config.connectionString });
+        // await client.connect();
+        // try {
+        //   const result = await client.query(config.query, Object.values(config.parameters || {}));
+        //   return {
+        //     rows: result.rows,
+        //     rowCount: result.rowCount,
+        //     executionTime: result.duration,
+        //   };
+        // } finally {
+        //   await client.end();
+        // }
     }
     addStepResult(runId, result) {
         const run = this.runs.get(runId);

@@ -5,9 +5,11 @@ export class VariableInterpolator {
 
   constructor(variables: EnvironmentVariable[]) {
     this.variables = new Map();
+    console.log('VariableInterpolator initialized with variables:', variables.map(v => ({ key: v.key, value: v.isSecret ? '[HIDDEN]' : v.value })));
     variables.forEach(v => {
       this.variables.set(v.key, v.value);
     });
+    console.log('Available variable keys:', Array.from(this.variables.keys()));
   }
 
   /**
@@ -16,11 +18,15 @@ export class VariableInterpolator {
   interpolateString(str: string): string {
     if (typeof str !== 'string') return str;
     
+    console.log('Interpolating string:', str);
     // Replace all occurrences of {{variable}} with their values
-    return str.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+    const result = str.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
       const value = this.variables.get(varName);
+      console.log(`Variable ${varName}: ${value !== undefined ? 'found' : 'NOT FOUND'} - value: ${value || 'undefined'}`);
       return value !== undefined ? value : match; // Keep original if not found
     });
+    console.log('Interpolation result:', result);
+    return result;
   }
 
   /**

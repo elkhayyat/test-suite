@@ -6,6 +6,7 @@ import { flowRoutes, flowStore } from './routes/flows';
 import { runRoutes } from './routes/runs';
 import { environmentRoutes } from './routes/environments';
 import { projectRoutes } from './routes/projects';
+import organizationRoutes from './routes/organizations';
 import { TestRunner } from './services/TestRunner';
 
 const app = express();
@@ -26,6 +27,7 @@ app.use('/api/flows', flowRoutes);
 app.use('/api/runs', runRoutes(testRunner));
 app.use('/api/environments', environmentRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api/organizations', organizationRoutes);
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);

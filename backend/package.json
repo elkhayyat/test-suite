@@ -5,14 +5,18 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:mongo": "tsx watch src/index-mongo.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "start:mongo": "node dist/index-mongo.js"
   },
   "dependencies": {
+    "@types/mongodb": "^4.0.6",
     "@types/sqlite3": "^3.1.11",
     "axios": "^1.6.2",
     "cors": "^2.8.5",
     "express": "^4.18.2",
+    "mongodb": "^6.17.0",
     "playwright": "^1.40.1",
     "socket.io": "^4.7.2",
     "sqlite": "^5.1.1",

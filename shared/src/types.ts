@@ -1,6 +1,6 @@
 export interface TestStep {
   id: string;
-  type: 'http' | 'browser' | 'assertion' | 'delay' | 'condition';
+  type: 'http' | 'browser' | 'assertion' | 'delay' | 'condition' | 'sql';
   name: string;
   config: Record<string, any>;
   position?: { x: number; y: number };
@@ -78,6 +78,13 @@ export interface ConditionStepConfig {
   falseTarget?: string;
 }
 
+export interface SqlStepConfig {
+  connectionString: string;
+  query: string;
+  parameters?: Record<string, any>;
+  timeout?: number;
+}
+
 export interface Environment {
   id: string;
   name: string;
@@ -109,6 +116,7 @@ export interface FlowEnvironmentConfig {
 
 export interface Project {
   id: string;
+  organizationId: string;
   name: string;
   description?: string;
   createdAt: Date;
@@ -129,6 +137,7 @@ export interface User {
   email: string;
   name: string;
   role: 'admin' | 'developer' | 'tester' | 'viewer';
+  organizationId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -139,4 +148,39 @@ export interface ProjectUser {
   userId: string;
   role: 'owner' | 'admin' | 'member' | 'viewer';
   createdAt: Date;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Team {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TeamUser {
+  id: string;
+  teamId: string;
+  userId: string;
+  role: 'owner' | 'admin' | 'member' | 'viewer';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ProjectTeam {
+  id: string;
+  projectId: string;
+  teamId: string;
+  permissions: 'read' | 'write' | 'admin';
+  createdAt: Date;
+  updatedAt: Date;
 }

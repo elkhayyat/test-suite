@@ -89,6 +89,27 @@ async function initializeDatabase() {
       FOREIGN KEY (environment_id) REFERENCES environments(id) ON DELETE CASCADE,
       UNIQUE(flow_id, environment_id, step_id)
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'tester',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS project_users (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(project_id, user_id)
+    );
   `);
     // Create default environment if none exists
     const defaultEnv = await db.get('SELECT id FROM environments WHERE is_default = TRUE');
@@ -99,6 +120,14 @@ async function initializeDatabase() {
     const defaultProject = await db.get('SELECT id FROM projects WHERE name = ?', 'Default Project');
     if (!defaultProject) {
         await db.run('INSERT INTO projects (id, name, description) VALUES (?, ?, ?)', ['default', 'Default Project', 'Default project for all flows']);
+    }
+    // Create default admin user if none exists
+    const adminUser = await db.get('SELECT id FROM users WHERE email = ?', 'admin@example.com');
+    if (!adminUser) {
+        // Note: In a real app, this would be hashed properly
+        await db.run('INSERT INTO users (id, email, name, password_hash, role) VALUES (?, ?, ?, ?, ?)', ['admin', 'admin@example.com', 'Admin User', 'admin123', 'admin']);
+        // Add admin to default project
+        await db.run('INSERT INTO project_users (id, project_id, user_id, role) VALUES (?, ?, ?, ?)', ['admin-default', 'default', 'admin', 'owner']);
     }
 }
 async function closeDatabase() {

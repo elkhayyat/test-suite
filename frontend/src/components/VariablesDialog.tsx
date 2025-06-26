@@ -26,6 +26,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { Environment, EnvironmentVariable } from '../../../shared/src/types';
 import { api } from '../services/api';
 
@@ -40,7 +41,7 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
   const [newVariable, setNewVariable] = useState({ key: '', value: '', isSecret: false });
   const [showSecrets, setShowSecrets] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [editingVariable, setEditingVariable] = useState<{ key: string; value: string } | null>(null);
+  const [editingVariable, setEditingVariable] = useState<{ originalKey: string; key: string; value: string } | null>(null);
 
   useEffect(() => {
     if (open && environment) {
@@ -93,7 +94,7 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
   };
 
   const handleStartEdit = (variable: EnvironmentVariable) => {
-    setEditingVariable({ key: variable.key, value: variable.value });
+    setEditingVariable({ originalKey: variable.key, key: variable.key, value: variable.value });
   };
 
   const handleCancelEdit = () => {
@@ -104,12 +105,26 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
     if (!environment || !editingVariable) return;
     
     try {
-      await api.setEnvironmentVariable(
-        environment.id,
-        variable.key,
-        editingVariable.value,
-        variable.isSecret
-      );
+      // If the key has changed, we need to delete the old one and create a new one
+      if (editingVariable.originalKey !== editingVariable.key) {
+        // Create new variable with new key
+        await api.setEnvironmentVariable(
+          environment.id,
+          editingVariable.key,
+          editingVariable.value,
+          variable.isSecret
+        );
+        // Delete old variable
+        await api.deleteEnvironmentVariable(environment.id, editingVariable.originalKey);
+      } else {
+        // Just update the value
+        await api.setEnvironmentVariable(
+          environment.id,
+          variable.key,
+          editingVariable.value,
+          variable.isSecret
+        );
+      }
       setEditingVariable(null);
       loadVariables();
     } catch (error) {
@@ -122,6 +137,16 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
       return '••••••••';
     }
     return variable.value;
+  };
+
+  const handleCopyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // You could add a snackbar notification here if you have one set up
+      console.log(`Copied ${label} to clipboard`);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
   };
 
   return (
@@ -194,10 +219,31 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
               {variables.map((variable) => (
                 <TableRow key={variable.id}>
                   <TableCell sx={{ fontFamily: 'monospace' }}>
-                    {'{{'}{variable.key}{'}}'}
+                    {editingVariable?.originalKey === variable.key ? (
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={editingVariable.key}
+                        onChange={(e) => setEditingVariable({ ...editingVariable, key: e.target.value })}
+                        sx={{ fontFamily: 'monospace' }}
+                        placeholder="Variable name"
+                      />
+                    ) : (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <span>{`{{${variable.key}}}`}</span>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleCopyToClipboard(`{{${variable.key}}}`, 'variable name')}
+                          sx={{ padding: 0.5 }}
+                          title="Copy variable name"
+                        >
+                          <ContentCopyIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    )}
                   </TableCell>
                   <TableCell sx={{ fontFamily: 'monospace' }}>
-                    {editingVariable?.key === variable.key ? (
+                    {editingVariable?.originalKey === variable.key ? (
                       <TextField
                         size="small"
                         fullWidth
@@ -207,14 +253,26 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
                         sx={{ fontFamily: 'monospace' }}
                       />
                     ) : (
-                      displayValue(variable)
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <span>{displayValue(variable)}</span>
+                        {(!variable.isSecret || showSecrets) && (
+                          <IconButton
+                            size="small"
+                            onClick={() => handleCopyToClipboard(variable.value, 'variable value')}
+                            sx={{ padding: 0.5 }}
+                            title="Copy value"
+                          >
+                            <ContentCopyIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                      </Box>
                     )}
                   </TableCell>
                   <TableCell>
                     {variable.isSecret ? 'Secret' : 'Plain'}
                   </TableCell>
                   <TableCell>
-                    {editingVariable?.key === variable.key ? (
+                    {editingVariable?.originalKey === variable.key ? (
                       <>
                         <IconButton
                           size="small"

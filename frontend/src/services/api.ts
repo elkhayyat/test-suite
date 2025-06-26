@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder } from '../../../shared/src/types';
+import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, Organization, Team, TeamUser, ProjectTeam } from '../../../shared/src/types';
 
 const API_BASE_URL = '/api';
 
@@ -45,8 +45,8 @@ export const api = {
     return response.data;
   },
 
-  async startRun(flowId: string, environmentId?: string): Promise<{ runId: string }> {
-    const response = await apiClient.post('/runs', { flowId, environmentId });
+  async startRun(flowId: string, environmentId?: string, selectedSteps?: string[]): Promise<{ runId: string }> {
+    const response = await apiClient.post('/runs', { flowId, environmentId, selectedSteps });
     return response.data;
   },
 
@@ -90,6 +90,16 @@ export const api = {
 
   async deleteEnvironmentVariable(environmentId: string, key: string): Promise<void> {
     await apiClient.delete(`/environments/${environmentId}/variables/${key}`);
+  },
+
+  async exportEnvironment(environmentId: string): Promise<any> {
+    const response = await apiClient.get(`/environments/${environmentId}/export`);
+    return response.data;
+  },
+
+  async importEnvironment(environmentId: string, data: any): Promise<any> {
+    const response = await apiClient.post(`/environments/${environmentId}/import`, data);
+    return response.data;
   },
 
   // Projects
@@ -140,5 +150,115 @@ export const api = {
 
   async deleteFolder(projectId: string, folderId: string): Promise<void> {
     await apiClient.delete(`/projects/${projectId}/folders/${folderId}`);
+  },
+
+  async exportProject(projectId: string): Promise<any> {
+    const response = await apiClient.get(`/projects/${projectId}/export`);
+    return response.data;
+  },
+
+  async importProject(projectId: string, data: any): Promise<any> {
+    const response = await apiClient.post(`/projects/${projectId}/import`, data);
+    return response.data;
+  },
+
+  // Organizations
+  async getOrganizations(): Promise<Organization[]> {
+    const response = await apiClient.get('/organizations');
+    return response.data;
+  },
+
+  async getOrganization(id: string): Promise<Organization> {
+    const response = await apiClient.get(`/organizations/${id}`);
+    return response.data;
+  },
+
+  async createOrganization(org: Partial<Organization>): Promise<Organization> {
+    const response = await apiClient.post('/organizations', org);
+    return response.data;
+  },
+
+  async updateOrganization(id: string, org: Partial<Organization>): Promise<Organization> {
+    const response = await apiClient.put(`/organizations/${id}`, org);
+    return response.data;
+  },
+
+  async deleteOrganization(id: string): Promise<void> {
+    await apiClient.delete(`/organizations/${id}`);
+  },
+
+  async exportOrganization(id: string): Promise<any> {
+    const response = await apiClient.get(`/organizations/${id}/export`);
+    return response.data;
+  },
+
+  async importOrganization(id: string, data: any): Promise<any> {
+    const response = await apiClient.post(`/organizations/${id}/import`, data);
+    return response.data;
+  },
+
+  // Teams
+  async getTeams(organizationId: string): Promise<Team[]> {
+    const response = await apiClient.get(`/organizations/${organizationId}/teams`);
+    return response.data;
+  },
+
+  async getTeam(organizationId: string, teamId: string): Promise<Team> {
+    const response = await apiClient.get(`/organizations/${organizationId}/teams/${teamId}`);
+    return response.data;
+  },
+
+  async createTeam(organizationId: string, team: Partial<Team>): Promise<Team> {
+    const response = await apiClient.post(`/organizations/${organizationId}/teams`, team);
+    return response.data;
+  },
+
+  async updateTeam(organizationId: string, teamId: string, team: Partial<Team>): Promise<Team> {
+    const response = await apiClient.put(`/organizations/${organizationId}/teams/${teamId}`, team);
+    return response.data;
+  },
+
+  async deleteTeam(organizationId: string, teamId: string): Promise<void> {
+    await apiClient.delete(`/organizations/${organizationId}/teams/${teamId}`);
+  },
+
+  // Team Users
+  async getTeamUsers(organizationId: string, teamId: string): Promise<TeamUser[]> {
+    const response = await apiClient.get(`/organizations/${organizationId}/teams/${teamId}/users`);
+    return response.data;
+  },
+
+  async addUserToTeam(organizationId: string, teamId: string, userId: string, role: TeamUser['role']): Promise<TeamUser> {
+    const response = await apiClient.post(`/organizations/${organizationId}/teams/${teamId}/users`, { userId, role });
+    return response.data;
+  },
+
+  async updateTeamUserRole(organizationId: string, teamId: string, userId: string, role: TeamUser['role']): Promise<TeamUser> {
+    const response = await apiClient.put(`/organizations/${organizationId}/teams/${teamId}/users/${userId}`, { role });
+    return response.data;
+  },
+
+  async removeUserFromTeam(organizationId: string, teamId: string, userId: string): Promise<void> {
+    await apiClient.delete(`/organizations/${organizationId}/teams/${teamId}/users/${userId}`);
+  },
+
+  // Project Teams
+  async getProjectTeams(projectId: string): Promise<ProjectTeam[]> {
+    const response = await apiClient.get(`/projects/${projectId}/teams`);
+    return response.data;
+  },
+
+  async addTeamToProject(projectId: string, teamId: string, permissions: ProjectTeam['permissions']): Promise<ProjectTeam> {
+    const response = await apiClient.post(`/projects/${projectId}/teams`, { teamId, permissions });
+    return response.data;
+  },
+
+  async updateProjectTeamPermissions(projectId: string, teamId: string, permissions: ProjectTeam['permissions']): Promise<ProjectTeam> {
+    const response = await apiClient.put(`/projects/${projectId}/teams/${teamId}`, { permissions });
+    return response.data;
+  },
+
+  async removeTeamFromProject(projectId: string, teamId: string): Promise<void> {
+    await apiClient.delete(`/projects/${projectId}/teams/${teamId}`);
   },
 };

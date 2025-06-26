@@ -10,7 +10,7 @@ import {
   Typography,
   Divider,
 } from '@mui/material';
-import { TestStep, HttpStepConfig, BrowserStepConfig, AssertionStepConfig, DelayStepConfig, ConditionStepConfig } from '../../../shared/src/types';
+import { TestStep, HttpStepConfig, BrowserStepConfig, AssertionStepConfig, DelayStepConfig, ConditionStepConfig, SqlStepConfig } from '../../../shared/src/types';
 
 interface StepConfigPanelProps {
   step: TestStep;
@@ -267,6 +267,57 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
     );
   };
 
+  const renderSqlConfig = () => {
+    const config = step.config as SqlStepConfig;
+    return (
+      <>
+        <TextField
+          fullWidth
+          label="Connection String"
+          value={config.connectionString || ''}
+          onChange={(e) => handleChange('connectionString', e.target.value)}
+          margin="normal"
+          helperText="e.g., postgresql://user:password@localhost:5432/database"
+        />
+        <TextField
+          fullWidth
+          label="SQL Query"
+          value={config.query || ''}
+          onChange={(e) => handleChange('query', e.target.value)}
+          multiline
+          rows={4}
+          margin="normal"
+          helperText="SQL query to execute. Use {{variable}} for variable interpolation"
+        />
+        <TextField
+          fullWidth
+          label="Parameters (JSON)"
+          value={config.parameters ? JSON.stringify(config.parameters, null, 2) : '{}'}
+          onChange={(e) => {
+            try {
+              const parsed = JSON.parse(e.target.value || '{}');
+              handleChange('parameters', parsed);
+            } catch (e) {
+              // Keep the text as is if invalid JSON
+            }
+          }}
+          multiline
+          rows={3}
+          margin="normal"
+          helperText="Named parameters for prepared statements"
+        />
+        <TextField
+          fullWidth
+          label="Timeout (ms)"
+          type="number"
+          value={config.timeout || 30000}
+          onChange={(e) => handleChange('timeout', parseInt(e.target.value))}
+          margin="normal"
+        />
+      </>
+    );
+  };
+
   const renderConfig = () => {
     switch (step.type) {
       case 'http':
@@ -279,6 +330,8 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
         return renderDelayConfig();
       case 'condition':
         return renderConditionConfig();
+      case 'sql':
+        return renderSqlConfig();
       default:
         return null;
     }

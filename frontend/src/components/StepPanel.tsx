@@ -7,6 +7,7 @@ import TimerIcon from '@mui/icons-material/Timer';
 import CodeIcon from '@mui/icons-material/Code';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import StorageIcon from '@mui/icons-material/Storage';
 import { TestStep } from '../../../shared/src/types';
 
 interface StepPanelProps {
@@ -20,6 +21,7 @@ export default function StepPanel({ onAddStep }: StepPanelProps) {
     { type: 'assertion' as const, label: 'Assertion', icon: <CheckCircleIcon /> },
     { type: 'delay' as const, label: 'Delay', icon: <TimerIcon /> },
     { type: 'condition' as const, label: 'Condition', icon: <CodeIcon /> },
+    { type: 'sql' as const, label: 'SQL Query', icon: <StorageIcon /> },
   ];
 
   return (
@@ -41,6 +43,11 @@ export default function StepPanel({ onAddStep }: StepPanelProps) {
             key={stepType.type}
             button
             onClick={() => onAddStep(stepType.type)}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/reactflow', stepType.type);
+              e.dataTransfer.effectAllowed = 'move';
+            }}
             className="animate-slideInLeft"
             sx={{ 
               borderRadius: 1,
@@ -48,6 +55,10 @@ export default function StepPanel({ onAddStep }: StepPanelProps) {
               animationDelay: `${index * 0.1}s`,
               animationFillMode: 'both',
               transition: 'all 0.3s ease',
+              cursor: 'grab',
+              '&:active': {
+                cursor: 'grabbing',
+              },
               '&:hover': {
                 backgroundColor: (theme) => theme.palette.mode === 'dark' 
                   ? 'rgba(255,255,255,0.08)' 

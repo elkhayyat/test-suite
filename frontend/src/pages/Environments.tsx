@@ -28,6 +28,8 @@ import CloudIcon from '@mui/icons-material/Cloud';
 import PublicIcon from '@mui/icons-material/Public';
 import SecurityIcon from '@mui/icons-material/Security';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import DownloadIcon from '@mui/icons-material/Download';
+import UploadIcon from '@mui/icons-material/Upload';
 import { Environment } from '../../../shared/src/types';
 import { api } from '../services/api';
 import VariablesDialog from '../components/VariablesDialog';
@@ -43,6 +45,7 @@ export default function Environments() {
   });
   const [variablesDialogOpen, setVariablesDialogOpen] = useState(false);
   const [selectedEnvironment, setSelectedEnvironment] = useState<Environment | null>(null);
+  const [importingEnvId, setImportingEnvId] = useState<string>('');
 
   useEffect(() => {
     loadEnvironments();
@@ -109,6 +112,59 @@ export default function Environments() {
         console.error('Failed to delete environment:', error);
       }
     }
+  };
+
+  const handleExportEnvironment = async (envId: string, envName: string) => {
+    try {
+      const exportData = await api.exportEnvironment(envId);
+      
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      
+      const exportFileDefaultName = `${envName.replace(/[^a-z0-9]/gi, '_')}_environment.json`;
+      
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+    } catch (error) {
+      console.error('Failed to export environment:', error);
+      alert('Failed to export environment');
+    }
+  };
+
+  const handleImportEnvironment = (envId: string) => {
+    setImportingEnvId(envId);
+    const fileInput = document.getElementById(`import-env-input-${envId}`) as HTMLInputElement;
+    fileInput?.click();
+  };
+
+  const handleImportEnvFile = async (event: React.ChangeEvent<HTMLInputElement>, envId: string) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const importData = JSON.parse(e.target?.result as string);
+          await api.importEnvironment(envId, importData);
+          alert('Environment imported successfully!');
+          loadEnvironments();
+        } catch (error) {
+          console.error('Failed to import environment:', error);
+          alert('Failed to import environment. Please check the file format.');
+        }
+      };
+      reader.readAsText(file);
+    } catch (error) {
+      console.error('Failed to read import file:', error);
+      alert('Failed to read the import file.');
+    }
+    
+    // Reset the input
+    event.target.value = '';
+    setImportingEnvId('');
   };
 
   return (
@@ -269,6 +325,34 @@ export default function Environments() {
                   >
                     Variables
                   </Button>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleExportEnvironment(env.id, env.name)}
+                    title="Export Environment"
+                    sx={{
+                      color: '#f39c12',
+                      '&:hover': {
+                        backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                        transform: 'scale(1.1)'
+                      }
+                    }}
+                  >
+                    <DownloadIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleImportEnvironment(env.id)}
+                    title="Import to Environment"
+                    sx={{
+                      color: '#e67e22',
+                      '&:hover': {
+                        backgroundColor: 'rgba(230, 126, 34, 0.1)',
+                        transform: 'scale(1.1)'
+                      }
+                    }}
+                  >
+                    <UploadIcon />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -325,6 +409,18 @@ export default function Environments() {
           setSelectedEnvironment(null);
         }}
       />
+
+      {/* Hidden file inputs for importing */}
+      {environments.map((env) => (
+        <input
+          key={env.id}
+          id={`import-env-input-${env.id}`}
+          type="file"
+          accept=".json"
+          style={{ display: 'none' }}
+          onChange={(e) => handleImportEnvFile(e, env.id)}
+        />
+      ))}
     </Box>
   );
 }

@@ -16,12 +16,12 @@ const runRoutes = (testRunner) => {
         res.json(run);
     });
     router.post('/', async (req, res) => {
-        const { flowId, environmentId } = req.body;
+        const { flowId, environmentId, selectedSteps } = req.body;
         if (!flowId) {
             return res.status(400).json({ error: 'flowId is required' });
         }
         try {
-            const runId = await testRunner.startRun(flowId, environmentId);
+            const runId = await testRunner.startRun(flowId, environmentId, selectedSteps);
             res.status(201).json({ runId });
         }
         catch (error) {

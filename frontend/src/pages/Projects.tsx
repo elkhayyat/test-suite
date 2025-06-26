@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Typography,
@@ -13,7 +13,6 @@ import {
   DialogActions,
   TextField,
   IconButton,
-  Chip,
   Paper,
   List,
   ListItem,
@@ -27,21 +26,24 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import DownloadIcon from '@mui/icons-material/Download';
+import UploadIcon from '@mui/icons-material/Upload';
 import { Project, Folder } from '../../../shared/src/types';
 import { api } from '../services/api';
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [folders, setFolders] = useState<{ [projectId: string]: Folder[] }>({});
-  const [expandedProjects, setExpandedProjects] = useState<{ [projectId: string]: boolean }>({});
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editingFolder, setEditingFolder] = useState<{ folder: Folder; projectId: string } | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
   });
+  const [importingProjectId, setImportingProjectId] = useState<string>('');
 
   useEffect(() => {
     loadProjects();
@@ -52,12 +54,6 @@ export default function Projects() {
       const data = await api.getProjects();
       setProjects(data);
       
-      // Expand all projects by default
-      const expanded: { [projectId: string]: boolean } = {};
-      data.forEach(project => {
-        expanded[project.id] = true;
-      });
-      setExpandedProjects(expanded);
       
       // Load folders for each project
       for (const project of data) {
@@ -69,12 +65,6 @@ export default function Projects() {
     }
   };
 
-  const handleToggleProject = (projectId: string) => {
-    setExpandedProjects(prev => ({
-      ...prev,
-      [projectId]: !prev[projectId]
-    }));
-  };
 
   const handleOpenProjectDialog = (project?: Project) => {
     if (project) {
@@ -121,24 +111,39 @@ export default function Projects() {
     }
   };
 
-  const handleOpenFolderDialog = (projectId: string) => {
+  const handleOpenFolderDialog = (projectId: string, folder?: Folder) => {
+    if (folder) {
+      setEditingFolder({ folder, projectId });
+      setFormData({
+        name: folder.name,
+        description: '',
+      });
+    } else {
+      setEditingFolder(null);
+      setFormData({ name: '', description: '' });
+    }
     setSelectedProjectId(projectId);
-    setFormData({ name: '', description: '' });
     setFolderDialogOpen(true);
   };
 
   const handleCloseFolderDialog = () => {
     setFolderDialogOpen(false);
     setSelectedProjectId('');
+    setEditingFolder(null);
     setFormData({ name: '', description: '' });
   };
 
   const handleSaveFolder = async () => {
     try {
-      await api.createFolder(selectedProjectId, {
-        name: formData.name,
-        description: formData.description,
-      });
+      if (editingFolder) {
+        await api.updateFolder(editingFolder.projectId, editingFolder.folder.id, {
+          name: formData.name,
+        });
+      } else {
+        await api.createFolder(selectedProjectId, {
+          name: formData.name,
+        });
+      }
       handleCloseFolderDialog();
       loadProjects();
     } catch (error) {
@@ -156,6 +161,59 @@ export default function Projects() {
         console.error('Failed to delete folder:', error);
       }
     }
+  };
+
+  const handleExportProject = async (projectId: string, projectName: string) => {
+    try {
+      const exportData = await api.exportProject(projectId);
+      
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      
+      const exportFileDefaultName = `${projectName.replace(/[^a-z0-9]/gi, '_')}_project.json`;
+      
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+    } catch (error) {
+      console.error('Failed to export project:', error);
+      alert('Failed to export project');
+    }
+  };
+
+  const handleImportProject = (projectId: string) => {
+    setImportingProjectId(projectId);
+    const fileInput = document.getElementById(`import-input-${projectId}`) as HTMLInputElement;
+    fileInput?.click();
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>, projectId: string) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const importData = JSON.parse(e.target?.result as string);
+          await api.importProject(projectId, importData);
+          alert('Project imported successfully!');
+          loadProjects();
+        } catch (error) {
+          console.error('Failed to import project:', error);
+          alert('Failed to import project. Please check the file format.');
+        }
+      };
+      reader.readAsText(file);
+    } catch (error) {
+      console.error('Failed to read import file:', error);
+      alert('Failed to read the import file.');
+    }
+    
+    // Reset the input
+    event.target.value = '';
+    setImportingProjectId('');
   };
 
   return (
@@ -257,14 +315,23 @@ export default function Projects() {
                             }
                           }}
                           secondaryAction={
-                            <IconButton
-                              edge="end"
-                              size="small"
-                              onClick={() => handleDeleteFolder(folder.id, project.id)}
-                              sx={{ color: '#f5576c' }}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
+                            <Box>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleOpenFolderDialog(project.id, folder)}
+                                sx={{ color: '#667eea' }}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                edge="end"
+                                size="small"
+                                onClick={() => handleDeleteFolder(folder.id, project.id)}
+                                sx={{ color: '#f5576c' }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
                           }
                         >
                           <ListItemIcon sx={{ minWidth: 36 }}>
@@ -293,6 +360,22 @@ export default function Projects() {
                   sx={{ color: '#667eea' }}
                 >
                   Edit
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<DownloadIcon />}
+                  onClick={() => handleExportProject(project.id, project.name)}
+                  sx={{ color: '#11998e' }}
+                >
+                  Export
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<UploadIcon />}
+                  onClick={() => handleImportProject(project.id)}
+                  sx={{ color: '#f39c12' }}
+                >
+                  Import
                 </Button>
                 <Button
                   size="small"
@@ -348,7 +431,7 @@ export default function Projects() {
 
       {/* Folder Dialog */}
       <Dialog open={folderDialogOpen} onClose={handleCloseFolderDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>New Folder</DialogTitle>
+        <DialogTitle>{editingFolder ? 'Edit Folder' : 'New Folder'}</DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
@@ -377,10 +460,22 @@ export default function Projects() {
             className="gradient-teal"
             sx={{ color: 'white' }}
           >
-            Create
+            {editingFolder ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Hidden file inputs for importing */}
+      {projects.map((project) => (
+        <input
+          key={project.id}
+          id={`import-input-${project.id}`}
+          type="file"
+          accept=".json"
+          style={{ display: 'none' }}
+          onChange={(e) => handleImportFile(e, project.id)}
+        />
+      ))}
     </Box>
   );
 }

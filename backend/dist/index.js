@@ -11,6 +11,7 @@ const flows_1 = require("./routes/flows");
 const runs_1 = require("./routes/runs");
 const environments_1 = require("./routes/environments");
 const projects_1 = require("./routes/projects");
+const organizations_1 = __importDefault(require("./routes/organizations"));
 const TestRunner_1 = require("./services/TestRunner");
 const app = (0, express_1.default)();
 const httpServer = (0, http_1.createServer)(app);
@@ -27,6 +28,7 @@ app.use('/api/flows', flows_1.flowRoutes);
 app.use('/api/runs', (0, runs_1.runRoutes)(testRunner));
 app.use('/api/environments', environments_1.environmentRoutes);
 app.use('/api/projects', projects_1.projectRoutes);
+app.use('/api/organizations', organizations_1.default);
 io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
     socket.on('disconnect', () => {

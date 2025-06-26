@@ -11,7 +11,7 @@ export declare class TestRunner {
     constructor(io: Server, flowStore: FlowStore);
     getAllRuns(): TestRun[];
     getRun(id: string): TestRun | undefined;
-    startRun(flowId: string, environmentId?: string): Promise<string>;
+    startRun(flowId: string, environmentId?: string, selectedSteps?: string[]): Promise<string>;
     stopRun(runId: string): boolean;
     private executeFlow;
     private calculateExecutionOrder;
@@ -20,6 +20,7 @@ export declare class TestRunner {
     private executeBrowserStep;
     private executeDelayStep;
     private executeAssertionStep;
+    private executeSqlStep;
     private addStepResult;
     private updateRunStatus;
 }

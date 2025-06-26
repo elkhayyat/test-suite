@@ -15,13 +15,14 @@
 - [x] add animations to the design, make it look sleeky and fashionable.
 - [x] add more icons to the design.
 - [x] add more colors to the design.
-- [ ] use mongodb instead of sqlite.
-- [ ] autosave functionality.
-- [ ] ability to run flow from the flow details, or run only selected steps.
-- [ ] ability to delete flows.
-- [ ] ability to delete steps.
-- [ ] add right click menu to steps for duplicate, delete, copy, paste.
-- [ ] multi-tenants, each tenant can invite users.
+- [x] use mongodb instead of sqlite.
+- [x] autosave functionality.
+- [x] add right click menu to steps for duplicate, delete, copy, paste.
+- [x] multi-tenants, each tenant can invite users. and create teams, the projects permissions is related to teams, and the users are related to teams.
+- [x] add sql query step.
+- [ ] ability to export and import entire project.
+- [ ] ability to export and import entire organization.
+- [ ] ability to export and import entire environment.
 
 # Bugs
 - [x] nothing happens when clicking on show test runs.
@@ -31,10 +32,30 @@
 - [x] can't find projects or folders.
 - [x] can't view test runs details.
 - [x] i can add / remove environment variables but can't edit existing ones.
-- [ ] i can not edit environment variable name.
+- [x] i can not edit environment variable name.
+- [x] expanding step execution results do nothing.
+- [x] test run status success while there is a failed step.
+- [x] HTTP Request: Step not executed yet
+- [x] Drag and drop steps from step menu to flow editor not working.
+- [x] can't run single or selected steps
+- [x] running flows only run the last step.
+- [x] after click run step, i got test run started, but nothing happens and can't see the results for the steps.
+- [x] when running step which have environment variables in the url, i got error Error: Invalid URL
+- [x] i got "Failed to run step" without knowing what actually happened, it should show the error message for each step.
+- [x] can't see the output of sql step inside the step
+- [x] Nothing happens after click submit to create an organization.
+- [x] URL contains unresolved variables: {{baseUrl}}
+
 
 
 # TODOs
 - [x] folders should be always visible under project, also if the project have flows without folders.
-- [ ] ability to rename folders.
-- [ ] drag and drop flows between folders and projects.
+- [x] ability to rename folders.
+- [x] drag and drop flows between folders and projects.
+- [x] add copy buttons to be able to copy environment varible name or value.
+- [x] ability to run flow from the flow details, or run only selected steps.
+- [x] ability to delete flows.
+- [x] ability to delete steps.
+- [x] runnign the flow or single steps from flow details page should show the result of each step on the step itself
+- [x] add run button to step right click menu to run this step
+- [ ] split the step results into tabs

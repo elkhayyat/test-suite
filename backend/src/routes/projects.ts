@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ProjectStore } from '../services/ProjectStore';
+import * as organizationsService from '../services/organizations';
 
 const projectStore = new ProjectStore();
 
@@ -146,5 +147,56 @@ projectRoutes.delete('/:projectId/folders/:folderId', async (req, res) => {
     res.status(204).send();
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete folder' });
+  }
+});
+
+// Project team routes
+projectRoutes.get('/:id/teams', async (req, res) => {
+  try {
+    const teams = await organizationsService.getProjectTeams(req.params.id);
+    res.json(teams);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch project teams' });
+  }
+});
+
+projectRoutes.post('/:id/teams', async (req, res) => {
+  try {
+    const { teamId, permissions } = req.body;
+    if (!teamId || !permissions) {
+      return res.status(400).json({ error: 'teamId and permissions are required' });
+    }
+    const projectTeam = await organizationsService.addTeamToProject(req.params.id, teamId, permissions);
+    res.status(201).json(projectTeam);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add team to project' });
+  }
+});
+
+projectRoutes.put('/:id/teams/:teamId', async (req, res) => {
+  try {
+    const { permissions } = req.body;
+    if (!permissions) {
+      return res.status(400).json({ error: 'permissions is required' });
+    }
+    const projectTeam = await organizationsService.updateProjectTeamPermissions(req.params.id, req.params.teamId, permissions);
+    if (!projectTeam) {
+      return res.status(404).json({ error: 'Project team not found' });
+    }
+    res.json(projectTeam);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update project team permissions' });
+  }
+});
+
+projectRoutes.delete('/:id/teams/:teamId', async (req, res) => {
+  try {
+    const deleted = await organizationsService.removeTeamFromProject(req.params.id, req.params.teamId);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Project team not found' });
+    }
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to remove team from project' });
   }
 });

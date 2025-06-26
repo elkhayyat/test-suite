@@ -8,6 +8,7 @@ import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import ScienceIcon from '@mui/icons-material/Science';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import BusinessIcon from '@mui/icons-material/Business';
 import { styled, useTheme } from '@mui/material/styles';
 import { ColorModeContext } from '../App';
 
@@ -22,7 +23,6 @@ const Main = styled('main', { shouldForwardProp: (prop) => prop !== 'open' })<{
     easing: theme.transitions.easing.sharp,
     duration: theme.transitions.duration.leavingScreen,
   }),
-  marginLeft: `-${drawerWidth}px`,
   marginLeft: 0,
 }));
 
@@ -40,6 +40,7 @@ export default function Layout({ children }: LayoutProps) {
     { text: 'Projects', icon: <AccountTreeIcon />, path: '/projects' },
     { text: 'Test Runs', icon: <PlayArrowIcon />, path: '/runs' },
     { text: 'Environments', icon: <SettingsIcon />, path: '/environments' },
+    { text: 'Organizations', icon: <BusinessIcon />, path: '/organizations' },
   ];
 
   return (

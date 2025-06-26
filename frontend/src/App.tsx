@@ -1,14 +1,15 @@
-import React, { useState, useMemo, createContext, useContext } from 'react';
+import { useState, useMemo, createContext } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
+import FlowsOrganizer from './pages/FlowsOrganizer';
 import FlowEditor from './pages/FlowEditor';
 import TestRuns from './pages/TestRuns';
 import TestRunDetails from './pages/TestRunDetails';
 import Environments from './pages/Environments';
 import Projects from './pages/Projects';
+import Organizations from './pages/Organizations';
 
 interface ThemeContextType {
   toggleColorMode: () => void;
@@ -206,13 +207,14 @@ function App() {
         <Router>
           <Layout>
             <Routes>
-              <Route path="/" element={<Dashboard />} />
+              <Route path="/" element={<FlowsOrganizer />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/flows/:id" element={<FlowEditor />} />
               <Route path="/flows/new" element={<FlowEditor />} />
               <Route path="/runs" element={<TestRuns />} />
               <Route path="/runs/:runId" element={<TestRunDetails />} />
               <Route path="/environments" element={<Environments />} />
+              <Route path="/organizations" element={<Organizations />} />
             </Routes>
           </Layout>
         </Router>

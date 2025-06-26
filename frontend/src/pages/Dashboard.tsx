@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Grid, 
   Card, 
@@ -17,7 +17,6 @@ import FolderIcon from '@mui/icons-material/Folder';
 import DescriptionIcon from '@mui/icons-material/Description';
 import LayersIcon from '@mui/icons-material/Layers';
 import DeleteIcon from '@mui/icons-material/Delete';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { useNavigate } from 'react-router-dom';
 import { TestFlow } from '../../../shared/src/types';
 import { api } from '../services/api';
@@ -43,7 +42,7 @@ export default function Dashboard() {
 
   const handleRunFlow = async (flowId: string) => {
     try {
-      const { runId } = await api.startRun(flowId, selectedEnvironment);
+      await api.startRun(flowId, selectedEnvironment);
       navigate('/runs');
     } catch (error) {
       console.error('Failed to start run:', error);
@@ -52,7 +51,7 @@ export default function Dashboard() {
 
   const handleDuplicateFlow = async (flow: TestFlow) => {
     try {
-      const duplicatedFlow = await api.createFlow({
+      await api.createFlow({
         ...flow,
         id: undefined,
         name: `${flow.name} (Copy)`,
@@ -62,6 +61,17 @@ export default function Dashboard() {
       loadFlows(); // Reload flows to show the duplicate
     } catch (error) {
       console.error('Failed to duplicate flow:', error);
+    }
+  };
+
+  const handleDeleteFlow = async (flowId: string, flowName: string) => {
+    if (window.confirm(`Are you sure you want to delete the flow "${flowName}"?`)) {
+      try {
+        await api.deleteFlow(flowId);
+        loadFlows(); // Reload flows after deletion
+      } catch (error) {
+        console.error('Failed to delete flow:', error);
+      }
     }
   };
 
@@ -139,6 +149,14 @@ export default function Dashboard() {
                   color="primary"
                 >
                   Run
+                </Button>
+                <Button 
+                  size="small" 
+                  startIcon={<DeleteIcon />}
+                  onClick={() => handleDeleteFlow(flow.id, flow.name)}
+                  color="error"
+                >
+                  Delete
                 </Button>
               </CardActions>
             </Card>

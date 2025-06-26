@@ -1,0 +1,22 @@
+import { Organization, Team, TeamUser, ProjectTeam } from '../../../shared/src/types';
+export declare function getOrganizations(): Promise<Organization[]>;
+export declare function getOrganization(id: string): Promise<Organization | null>;
+export declare function createOrganization(data: Partial<Organization>): Promise<Organization>;
+export declare function updateOrganization(id: string, data: Partial<Organization>): Promise<Organization | null>;
+export declare function deleteOrganization(id: string): Promise<boolean>;
+export declare function getTeams(organizationId: string): Promise<Team[]>;
+export declare function getTeam(id: string): Promise<Team | null>;
+export declare function createTeam(organizationId: string, data: Partial<Team>): Promise<Team>;
+export declare function updateTeam(id: string, data: Partial<Team>): Promise<Team | null>;
+export declare function deleteTeam(id: string): Promise<boolean>;
+export declare function getTeamUsers(teamId: string): Promise<TeamUser[]>;
+export declare function addUserToTeam(teamId: string, userId: string, role: TeamUser['role']): Promise<TeamUser>;
+export declare function updateTeamUserRole(teamId: string, userId: string, role: TeamUser['role']): Promise<TeamUser | null>;
+export declare function removeUserFromTeam(teamId: string, userId: string): Promise<boolean>;
+export declare function getProjectTeams(projectId: string): Promise<ProjectTeam[]>;
+export declare function addTeamToProject(projectId: string, teamId: string, permissions: ProjectTeam['permissions']): Promise<ProjectTeam>;
+export declare function updateProjectTeamPermissions(projectId: string, teamId: string, permissions: ProjectTeam['permissions']): Promise<ProjectTeam | null>;
+export declare function removeTeamFromProject(projectId: string, teamId: string): Promise<boolean>;
+export declare function userHasProjectAccess(userId: string, projectId: string): Promise<boolean>;
+export declare function getUserProjects(userId: string): Promise<string[]>;
+//# sourceMappingURL=organizations.d.ts.map

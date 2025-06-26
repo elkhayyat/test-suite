@@ -15,8 +15,9 @@ import {
   IconButton,
   Chip,
   Divider,
-  Collapse,
   Alert,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -29,16 +30,21 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import TimerIcon from '@mui/icons-material/Timer';
 import CodeIcon from '@mui/icons-material/Code';
+import StorageIcon from '@mui/icons-material/Storage';
+import InfoIcon from '@mui/icons-material/Info';
 import { TestRun, TestStep, StepResult } from '../../../shared/src/types';
 import { api } from '../services/api';
 import StatusIndicator from '../components/StatusIndicator';
+import { useSocket } from '../hooks/useSocket';
 
 export default function TestRunDetails() {
   const { runId } = useParams();
   const navigate = useNavigate();
+  const socket = useSocket();
   const [run, setRun] = useState<TestRun | null>(null);
   const [flow, setFlow] = useState<any>(null);
   const [expandedSteps, setExpandedSteps] = useState<{ [stepId: string]: boolean }>({});
+  const [stepActiveTabs, setStepActiveTabs] = useState<{ [stepId: string]: number }>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -46,6 +52,42 @@ export default function TestRunDetails() {
       loadRunDetails();
     }
   }, [runId]);
+
+  // Listen for real-time updates
+  useEffect(() => {
+    if (!socket || !runId) return;
+
+    const handleRunUpdate = (updatedRun: TestRun) => {
+      if (updatedRun.id === runId) {
+        setRun(updatedRun);
+      }
+    };
+
+    const handleStepUpdate = (data: { runId: string; stepId: string; result: StepResult }) => {
+      if (data.runId === runId && run) {
+        // Update the specific step result
+        setRun(prevRun => {
+          if (!prevRun) return prevRun;
+          const updatedResults = [...prevRun.results];
+          const existingIndex = updatedResults.findIndex(r => r.stepId === data.stepId);
+          if (existingIndex >= 0) {
+            updatedResults[existingIndex] = data.result;
+          } else {
+            updatedResults.push(data.result);
+          }
+          return { ...prevRun, results: updatedResults };
+        });
+      }
+    };
+
+    socket.on('run:updated', handleRunUpdate);
+    socket.on('step:updated', handleStepUpdate);
+
+    return () => {
+      socket.off('run:updated', handleRunUpdate);
+      socket.off('step:updated', handleStepUpdate);
+    };
+  }, [socket, runId, run]);
 
   const loadRunDetails = async () => {
     try {
@@ -75,6 +117,8 @@ export default function TestRunDetails() {
         return <TimerIcon />;
       case 'condition':
         return <CodeIcon />;
+      case 'sql':
+        return <StorageIcon />;
       default:
         return null;
     }
@@ -88,6 +132,13 @@ export default function TestRunDetails() {
     setExpandedSteps(prev => ({
       ...prev,
       [stepId]: !prev[stepId]
+    }));
+  };
+
+  const handleStepTabChange = (stepId: string, newValue: number) => {
+    setStepActiveTabs(prev => ({
+      ...prev,
+      [stepId]: newValue
     }));
   };
 
@@ -223,15 +274,16 @@ export default function TestRunDetails() {
                   <Step 
                     key={step.id} 
                     active={result?.status === 'running'}
-                    completed={result?.status === 'success'}
+                    completed={result?.status === 'passed'}
+                    expanded={isExpanded}
                   >
                     <StepLabel
-                      error={result?.status === 'error'}
+                      error={result?.status === 'failed'}
                       StepIconComponent={() => (
                         <Box
                           className={
-                            result?.status === 'success' ? 'gradient-success' :
-                            result?.status === 'error' ? 'gradient-error' :
+                            result?.status === 'passed' ? 'gradient-success' :
+                            result?.status === 'failed' ? 'gradient-error' :
                             result?.status === 'running' ? 'gradient-info' :
                             'gradient-dark'
                           }
@@ -260,8 +312,8 @@ export default function TestRunDetails() {
                               label={result.status}
                               size="small"
                               color={
-                                result.status === 'success' ? 'success' :
-                                result.status === 'error' ? 'error' :
+                                result.status === 'passed' ? 'success' :
+                                result.status === 'failed' ? 'error' :
                                 result.status === 'running' ? 'primary' :
                                 'default'
                               }
@@ -282,56 +334,155 @@ export default function TestRunDetails() {
                       </Box>
                     </StepLabel>
                     <StepContent>
-                      <Collapse in={isExpanded}>
-                        <Box sx={{ mt: 2, mb: 2 }}>
-                          {result ? (
-                            <>
-                              {result.error && (
-                                <Alert severity="error" sx={{ mb: 2 }}>
-                                  <Typography variant="subtitle2" gutterBottom>
-                                    Error:
-                                  </Typography>
+                      <Box sx={{ mt: 2, mb: 2 }}>
+                        {result ? (() => {
+                          const tabs = [];
+                          
+                          // Info tab
+                          tabs.push({
+                            label: 'Info',
+                            content: (
+                              <Box>
+                                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                                  <Box>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Status
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      <Chip
+                                        label={result.status}
+                                        size="small"
+                                        color={
+                                          result.status === 'passed' ? 'success' :
+                                          result.status === 'failed' ? 'error' :
+                                          result.status === 'running' ? 'primary' :
+                                          'default'
+                                        }
+                                      />
+                                    </Typography>
+                                  </Box>
+                                  {result.startTime && (
+                                    <Box>
+                                      <Typography variant="caption" color="text.secondary">
+                                        Started
+                                      </Typography>
+                                      <Typography variant="body2">
+                                        {new Date(result.startTime).toLocaleTimeString()}
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                  {result.endTime && (
+                                    <Box>
+                                      <Typography variant="caption" color="text.secondary">
+                                        Ended
+                                      </Typography>
+                                      <Typography variant="body2">
+                                        {new Date(result.endTime).toLocaleTimeString()}
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                  {result.duration && (
+                                    <Box>
+                                      <Typography variant="caption" color="text.secondary">
+                                        Duration
+                                      </Typography>
+                                      <Typography variant="body2">
+                                        {result.duration}ms
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                </Box>
+                                <Typography variant="caption" color="text.secondary">
+                                  Step ID: {step.id}
+                                </Typography>
+                              </Box>
+                            )
+                          });
+
+                          // Output tab
+                          if (result.output) {
+                            tabs.push({
+                              label: 'Output',
+                              content: (
+                                <Paper 
+                                  variant="outlined" 
+                                  sx={{ 
+                                    p: 2, 
+                                    backgroundColor: 'background.default',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.875rem',
+                                    overflow: 'auto',
+                                    maxHeight: 300
+                                  }}
+                                >
+                                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                    {typeof result.output === 'string' 
+                                      ? result.output 
+                                      : JSON.stringify(result.output, null, 2)}
+                                  </pre>
+                                </Paper>
+                              )
+                            });
+                          }
+
+                          // Error tab
+                          if (result.error) {
+                            tabs.push({
+                              label: 'Error',
+                              content: (
+                                <Alert severity="error">
                                   <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                                     {result.error}
                                   </Typography>
                                 </Alert>
-                              )}
+                              )
+                            });
+                          }
 
-                              {result.output && (
-                                <Box sx={{ mb: 2 }}>
-                                  <Typography variant="subtitle2" gutterBottom>
-                                    Output:
-                                  </Typography>
-                                  <Paper 
-                                    variant="outlined" 
-                                    sx={{ 
-                                      p: 2, 
-                                      backgroundColor: 'background.default',
-                                      fontFamily: 'monospace',
-                                      fontSize: '0.875rem',
-                                      overflow: 'auto'
-                                    }}
-                                  >
-                                    <pre style={{ margin: 0 }}>
-                                      {typeof result.output === 'string' 
-                                        ? result.output 
-                                        : JSON.stringify(result.output, null, 2)}
-                                    </pre>
-                                  </Paper>
-                                </Box>
-                              )}
+                          // Auto-select error tab when step fails
+                          let activeTab = stepActiveTabs[step.id] || 0;
+                          if (result.status === 'failed' && result.error) {
+                            const errorTabIndex = tabs.findIndex(tab => tab.label === 'Error');
+                            if (errorTabIndex !== -1) {
+                              activeTab = errorTabIndex;
+                            }
+                          }
+                          activeTab = Math.min(activeTab, tabs.length - 1);
 
-                              <Typography variant="caption" color="text.secondary">
-                                Step ID: {step.id}
-                              </Typography>
-                            </>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              Step not executed yet
-                            </Typography>
-                          )}
-                        </Box>
-                      </Collapse>
+                          return (
+                            <Box sx={{ bgcolor: 'background.default', borderRadius: 1 }}>
+                              <Tabs 
+                                value={activeTab} 
+                                onChange={(_, newValue) => handleStepTabChange(step.id, newValue)}
+                                variant="scrollable"
+                                scrollButtons="auto"
+                                sx={{ 
+                                  minHeight: 32,
+                                  '& .MuiTab-root': { 
+                                    minHeight: 32, 
+                                    py: 0.5, 
+                                    fontSize: '0.875rem',
+                                    minWidth: 'auto',
+                                    px: 2
+                                  }
+                                }}
+                              >
+                                {tabs.map((tab, index) => (
+                                  <Tab key={index} label={tab.label} />
+                                ))}
+                              </Tabs>
+                              
+                              <Box sx={{ p: 2 }}>
+                                {tabs[activeTab]?.content}
+                              </Box>
+                            </Box>
+                          );
+                        })() : (
+                          <Typography variant="body2" color="text.secondary">
+                            Step not executed yet
+                          </Typography>
+                        )}
+                      </Box>
                     </StepContent>
                   </Step>
                 );
