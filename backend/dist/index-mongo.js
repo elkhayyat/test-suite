@@ -35,12 +35,12 @@ async function startServer() {
     });
     app.use((0, cors_1.default)());
     app.use(express_1.default.json());
-    const testRunner = new TestRunner_1.TestRunner(io, flowStore);
+    const testRunner = new TestRunner_1.TestRunner(io, flowStore, environmentStore);
     // Setup routes with stores
     app.use('/api/flows', (0, flows_mongo_1.flowRoutes)(flowStore));
     app.use('/api/runs', (0, runs_1.runRoutes)(testRunner));
     app.use('/api/environments', (0, environments_mongo_1.environmentRoutes)(environmentStore));
-    app.use('/api/projects', (0, projects_mongo_1.projectRoutes)(projectStore));
+    app.use('/api/projects', (0, projects_mongo_1.projectRoutes)(projectStore, flowStore));
     app.use('/api/organizations', organizations_1.default);
     io.on('connection', (socket) => {
         console.log('Client connected:', socket.id);

@@ -9,8 +9,10 @@ import {
   Button,
   Typography,
   Divider,
+  Autocomplete,
 } from '@mui/material';
-import { TestStep, HttpStepConfig, BrowserStepConfig, AssertionStepConfig, DelayStepConfig, ConditionStepConfig, SqlStepConfig } from '../../../shared/src/types';
+import { TestStep, HttpStepConfig, BrowserStepConfig, AssertionStepConfig, DelayStepConfig, ConditionStepConfig, SqlStepConfig, SubflowStepConfig, TestFlow } from '../../../shared/src/types';
+import { api } from '../services/api';
 
 interface StepConfigPanelProps {
   step: TestStep;
@@ -21,12 +23,24 @@ interface StepConfigPanelProps {
 export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigPanelProps) {
   const [headersText, setHeadersText] = useState('');
   const [bodyText, setBodyText] = useState('');
+  const [availableFlows, setAvailableFlows] = useState<TestFlow[]>([]);
   
   useEffect(() => {
     if (step.type === 'http') {
       const config = step.config as HttpStepConfig;
       setHeadersText(config.headers ? JSON.stringify(config.headers, null, 2) : '{}');
       setBodyText(config.body ? JSON.stringify(config.body, null, 2) : '');
+    }
+    
+    // Load available flows for subflow configuration
+    if (step.type === 'subflow') {
+      api.getFlows().then(flows => {
+        // Filter out the current flow to prevent recursion
+        const filtered = flows.filter(flow => flow.id !== step.id);
+        setAvailableFlows(filtered);
+      }).catch(error => {
+        console.error('Failed to load flows:', error);
+      });
     }
   }, [step]);
 
@@ -318,6 +332,85 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
     );
   };
 
+  const renderSubflowConfig = () => {
+    const config = step.config as SubflowStepConfig;
+    const selectedFlow = availableFlows.find(flow => flow.id === config.flowId);
+    
+    return (
+      <>
+        <Autocomplete
+          fullWidth
+          options={availableFlows}
+          getOptionLabel={(option) => `${option.name} (${option.id})`}
+          value={selectedFlow || null}
+          onChange={(_, newValue) => {
+            if (newValue) {
+              handleChange('flowId', newValue.id);
+              handleChange('flowName', newValue.name);
+            } else {
+              handleChange('flowId', '');
+              handleChange('flowName', '');
+            }
+          }}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Select Flow"
+              margin="normal"
+              required
+              helperText="Choose the flow to execute as a sub-flow"
+            />
+          )}
+        />
+        <TextField
+          fullWidth
+          label="Flow Name (optional)"
+          value={config.flowName || ''}
+          onChange={(e) => handleChange('flowName', e.target.value)}
+          margin="normal"
+          helperText="Display name for the sub-flow"
+        />
+        <TextField
+          fullWidth
+          label="Timeout (ms)"
+          type="number"
+          value={config.timeout || 300000}
+          onChange={(e) => handleChange('timeout', parseInt(e.target.value))}
+          margin="normal"
+          helperText="Maximum time to wait for sub-flow completion"
+        />
+        <FormControl fullWidth margin="normal">
+          <InputLabel>Inherit Environment</InputLabel>
+          <Select
+            value={config.inheritEnvironment !== false ? 'true' : 'false'}
+            label="Inherit Environment"
+            onChange={(e) => handleChange('inheritEnvironment', e.target.value === 'true')}
+          >
+            <MenuItem value="true">Yes - Use parent flow's environment</MenuItem>
+            <MenuItem value="false">No - Use default environment</MenuItem>
+          </Select>
+        </FormControl>
+        <TextField
+          fullWidth
+          label="Variable Mapping (JSON)"
+          value={config.variableMapping ? JSON.stringify(config.variableMapping, null, 2) : '{}'}
+          onChange={(e) => {
+            try {
+              const parsed = JSON.parse(e.target.value);
+              handleChange('variableMapping', parsed);
+            } catch (error) {
+              // Keep the text as is if invalid JSON
+            }
+          }}
+          multiline
+          rows={3}
+          margin="normal"
+          helperText="Map parent flow variables to sub-flow variables"
+        />
+      </>
+    );
+  };
+
   const renderConfig = () => {
     switch (step.type) {
       case 'http':
@@ -332,6 +425,8 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
         return renderConditionConfig();
       case 'sql':
         return renderSqlConfig();
+      case 'subflow':
+        return renderSubflowConfig();
       default:
         return null;
     }

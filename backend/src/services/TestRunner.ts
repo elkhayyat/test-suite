@@ -2,7 +2,7 @@ import { Server } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { chromium, Browser, Page } from 'playwright';
-import { TestRun, TestFlow, TestStep, StepResult } from '../../../shared/src/types';
+import { TestRun, TestFlow, TestStep, StepResult, SubflowStepConfig } from '../../../shared/src/types';
 import { FlowStore } from './FlowStore';
 import { EnvironmentStore } from './EnvironmentStoreMongo';
 import { VariableInterpolator } from './VariableInterpolator';
@@ -108,7 +108,7 @@ export class TestRunner {
           page = await this.browser.newPage();
         }
 
-        const result = await this.executeStep(interpolatedStep, page);
+        const result = await this.executeStep(interpolatedStep, page, environmentId);
 
         this.addStepResult(runId, result);
         this.io.emit('step:updated', { runId, stepId: result.stepId, result });
@@ -191,7 +191,7 @@ export class TestRunner {
     return order;
   }
 
-  private async executeStep(step: TestStep, page: Page | null): Promise<StepResult> {
+  private async executeStep(step: TestStep, page: Page | null, environmentId?: string): Promise<StepResult> {
     const result: StepResult = {
       stepId: step.id,
       status: 'running',
@@ -217,6 +217,9 @@ export class TestRunner {
           break;
         case 'sql':
           result.output = await this.executeSqlStep(step);
+          break;
+        case 'subflow':
+          result.output = await this.executeSubflowStep(step, environmentId || 'default');
           break;
       }
       
@@ -372,6 +375,93 @@ export class TestRunner {
     // } finally {
     //   await client.end();
     // }
+  }
+
+  private async executeSubflowStep(step: TestStep, environmentId: string): Promise<any> {
+    const config = step.config as SubflowStepConfig;
+    
+    // Validate config
+    if (!config.flowId) {
+      throw new Error('Sub-flow ID is required');
+    }
+
+    // Get the sub-flow
+    const subFlow = await this.flowStore.getFlow(config.flowId);
+    if (!subFlow) {
+      throw new Error(`Sub-flow with ID ${config.flowId} not found`);
+    }
+
+    // Determine environment to use
+    const subflowEnvironmentId = config.inheritEnvironment !== false ? environmentId : 'default';
+
+    // Load environment variables for sub-flow
+    const variables = await this.environmentStore.getEnvironmentVariables(subflowEnvironmentId);
+    const interpolator = new VariableInterpolator(variables);
+
+    // Apply variable mapping if provided
+    if (config.variableMapping) {
+      // TODO: Implement variable mapping logic
+      // This would allow parent flow variables to be mapped to sub-flow variables
+    }
+
+    const executionOrder = this.calculateExecutionOrder(subFlow);
+    const subResults: StepResult[] = [];
+    let page: Page | null = null;
+
+    try {
+      for (const stepId of executionOrder) {
+        const subStep = subFlow.steps.find(s => s.id === stepId);
+        if (!subStep) continue;
+
+        // Interpolate variables in sub-step config
+        const interpolatedStep = {
+          ...subStep,
+          config: interpolator.interpolateStepConfig(subStep.config)
+        };
+
+        // Create browser page if needed for browser steps
+        if (subStep.type === 'browser' && !page) {
+          if (!this.browser) {
+            this.browser = await chromium.launch();
+          }
+          page = await this.browser.newPage();
+        }
+
+        const stepResult = await this.executeStep(interpolatedStep, page, subflowEnvironmentId);
+        subResults.push(stepResult);
+
+        // Emit sub-flow step update
+        this.io.emit('subflow:step:updated', { 
+          parentStepId: step.id, 
+          subflowId: config.flowId,
+          stepId: stepResult.stepId, 
+          result: stepResult 
+        });
+
+        if (stepResult.status === 'failed') {
+          throw new Error(`Sub-flow step ${subStep.name} failed: ${stepResult.error}`);
+        }
+      }
+
+      return {
+        subflowId: config.flowId,
+        subflowName: subFlow.name,
+        stepResults: subResults,
+        totalSteps: subResults.length,
+        passedSteps: subResults.filter(r => r.status === 'passed').length,
+        failedSteps: subResults.filter(r => r.status === 'failed').length,
+        executionTime: subResults.reduce((total, r) => {
+          if (r.startTime && r.endTime) {
+            return total + (r.endTime.getTime() - r.startTime.getTime());
+          }
+          return total;
+        }, 0)
+      };
+    } finally {
+      if (page) {
+        await page.close();
+      }
+    }
   }
 
   private addStepResult(runId: string, result: StepResult) {

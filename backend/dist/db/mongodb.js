@@ -9,7 +9,7 @@ class MongoDB {
     collections;
     constructor() {
         // Use auth connection string for production, simple connection for development
-        const mongoUrl = process.env.MONGODB_URL || 'mongodb://localhost:27017/test-flow-suite';
+        const mongoUrl = process.env.MONGODB_URL || 'mongodb://app_user:app_password@localhost:27017/test-flow-suite';
         this.client = new mongodb_1.MongoClient(mongoUrl);
         // Extract database name from connection string or use default
         const dbName = process.env.MONGODB_DB_NAME || mongoUrl.split('/').pop()?.split('?')[0] || 'test-flow-suite';
@@ -31,15 +31,22 @@ class MongoDB {
     }
     async connect() {
         try {
+            console.log('Attempting to connect to MongoDB...');
             await this.client.connect();
-            console.log('Connected to MongoDB');
+            console.log('Connected to MongoDB successfully');
+            // Test the connection
+            await this.db.admin().ping();
+            console.log('MongoDB ping successful');
             // Create indexes
             await this.createIndexes();
+            console.log('MongoDB indexes created');
             // Initialize default data
             await this.initializeDefaultData();
+            console.log('MongoDB default data initialized');
         }
         catch (error) {
             console.error('Failed to connect to MongoDB:', error);
+            console.error('Make sure MongoDB is running and credentials are correct');
             throw error;
         }
     }
@@ -102,6 +109,46 @@ class MongoDB {
                 createdAt: new Date(),
                 updatedAt: new Date(),
             });
+            // Add default environment variables
+            const defaultVariables = [
+                {
+                    id: 'var-baseurl',
+                    environmentId: 'default',
+                    key: 'baseUrl',
+                    value: 'https://jsonplaceholder.typicode.com',
+                    isSecret: false,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                },
+                {
+                    id: 'var-apiurl',
+                    environmentId: 'default',
+                    key: 'apiUrl',
+                    value: 'https://api.example.com',
+                    isSecret: false,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                },
+                {
+                    id: 'var-localhost',
+                    environmentId: 'default',
+                    key: 'localhost',
+                    value: 'http://localhost:3000',
+                    isSecret: false,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                },
+                {
+                    id: 'var-token',
+                    environmentId: 'default',
+                    key: 'authToken',
+                    value: 'your-api-token-here',
+                    isSecret: true,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                }
+            ];
+            await this.collections.environmentVariables.insertMany(defaultVariables);
         }
         // Check if we have any users
         const userCount = await this.collections.users.countDocuments();

@@ -31,16 +31,30 @@ async function getOrganization(id) {
     return await db.organizations.findOne({ id });
 }
 async function createOrganization(data) {
-    const db = await (0, mongodb_1.getDB)();
-    const organization = {
-        id: (0, uuid_1.v4)(),
-        name: data.name || 'New Organization',
-        description: data.description,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    };
-    await db.organizations.insertOne(organization);
-    return organization;
+    try {
+        console.log('Creating organization with data:', data);
+        const db = await (0, mongodb_1.getDB)();
+        const organization = {
+            id: (0, uuid_1.v4)(),
+            name: data.name || 'New Organization',
+            description: data.description,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        };
+        console.log('Inserting organization:', organization);
+        await db.organizations.insertOne(organization);
+        console.log('Organization created successfully:', organization.id);
+        // Verify the organization was saved
+        const savedOrg = await db.organizations.findOne({ id: organization.id });
+        if (!savedOrg) {
+            throw new Error('Organization was not saved properly');
+        }
+        return organization;
+    }
+    catch (error) {
+        console.error('Error creating organization:', error);
+        throw error;
+    }
 }
 async function updateOrganization(id, data) {
     const db = await (0, mongodb_1.getDB)();

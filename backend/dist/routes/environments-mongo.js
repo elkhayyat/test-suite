@@ -97,6 +97,56 @@ const environmentRoutes = (environmentStore) => {
             res.status(500).json({ error: 'Failed to delete environment variable' });
         }
     });
+    // Export environment
+    router.get('/:id/export', async (req, res) => {
+        try {
+            const environmentId = req.params.id;
+            const environment = await environmentStore.getEnvironment(environmentId);
+            if (!environment) {
+                return res.status(404).json({ error: 'Environment not found' });
+            }
+            const variables = await environmentStore.getEnvironmentVariables(environmentId);
+            const exportData = {
+                environment,
+                variables,
+                exportDate: new Date(),
+                version: '1.0'
+            };
+            res.json(exportData);
+        }
+        catch (error) {
+            console.error('Failed to export environment:', error);
+            res.status(500).json({ error: 'Failed to export environment' });
+        }
+    });
+    // Import environment
+    router.post('/:id/import', async (req, res) => {
+        try {
+            const environmentId = req.params.id;
+            const { variables } = req.body;
+            if (!variables || !Array.isArray(variables)) {
+                return res.status(400).json({ error: 'Invalid import data: variables array required' });
+            }
+            const environment = await environmentStore.getEnvironment(environmentId);
+            if (!environment) {
+                return res.status(404).json({ error: 'Environment not found' });
+            }
+            // Import variables
+            const importedVariables = [];
+            for (const variableData of variables) {
+                const variable = await environmentStore.setEnvironmentVariable(environmentId, variableData.key, variableData.value, variableData.isSecret || false);
+                importedVariables.push(variable);
+            }
+            res.json({
+                message: 'Environment imported successfully',
+                importedVariables: importedVariables.length
+            });
+        }
+        catch (error) {
+            console.error('Failed to import environment:', error);
+            res.status(500).json({ error: 'Failed to import environment' });
+        }
+    });
     return router;
 };
 exports.environmentRoutes = environmentRoutes;

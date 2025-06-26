@@ -10,6 +10,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import StorageIcon from '@mui/icons-material/Storage';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { TestStep, StepResult } from '../../../shared/src/types';
 
 interface StepNodeData extends TestStep {
@@ -47,6 +48,8 @@ export default function StepNode({ data }: StepNodeProps) {
         return <CodeIcon />;
       case 'sql':
         return <StorageIcon />;
+      case 'subflow':
+        return <AccountTreeIcon />;
       default:
         return null;
     }
@@ -66,6 +69,8 @@ export default function StepNode({ data }: StepNodeProps) {
         return 'gradient-error';
       case 'sql':
         return 'gradient-secondary';
+      case 'subflow':
+        return 'gradient-info';
       default:
         return 'gradient-dark';
     }

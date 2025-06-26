@@ -1,6 +1,7 @@
 import { Server } from 'socket.io';
 import { TestRun } from '../../../shared/src/types';
 import { FlowStore } from './FlowStore';
+import { EnvironmentStore } from './EnvironmentStoreMongo';
 export declare class TestRunner {
     private io;
     private flowStore;
@@ -8,7 +9,7 @@ export declare class TestRunner {
     private browser;
     private activeRuns;
     private environmentStore;
-    constructor(io: Server, flowStore: FlowStore);
+    constructor(io: Server, flowStore: FlowStore, environmentStore: EnvironmentStore);
     getAllRuns(): TestRun[];
     getRun(id: string): TestRun | undefined;
     startRun(flowId: string, environmentId?: string, selectedSteps?: string[]): Promise<string>;
@@ -21,6 +22,7 @@ export declare class TestRunner {
     private executeDelayStep;
     private executeAssertionStep;
     private executeSqlStep;
+    private executeSubflowStep;
     private addStepResult;
     private updateRunStatus;
 }

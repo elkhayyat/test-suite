@@ -36,7 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.projectRoutes = void 0;
 const express_1 = require("express");
 const organizationsService = __importStar(require("../services/organizations"));
-const projectRoutes = (projectStore) => {
+const projectRoutes = (projectStore, flowStore) => {
     const router = (0, express_1.Router)();
     // Get all projects
     router.get('/', async (req, res) => {
@@ -202,6 +202,84 @@ const projectRoutes = (projectStore) => {
         }
         catch (error) {
             res.status(500).json({ error: 'Failed to remove team from project' });
+        }
+    });
+    // Export project
+    router.get('/:id/export', async (req, res) => {
+        if (!flowStore) {
+            return res.status(500).json({ error: 'FlowStore not available' });
+        }
+        try {
+            const projectId = req.params.id;
+            const project = await projectStore.getProject(projectId);
+            if (!project) {
+                return res.status(404).json({ error: 'Project not found' });
+            }
+            const flows = await flowStore.getFlowsByProject(projectId);
+            const folders = await projectStore.getFolders(projectId);
+            const exportData = {
+                project,
+                flows,
+                folders,
+                exportDate: new Date(),
+                version: '1.0'
+            };
+            res.json(exportData);
+        }
+        catch (error) {
+            console.error('Failed to export project:', error);
+            res.status(500).json({ error: 'Failed to export project' });
+        }
+    });
+    // Import project
+    router.post('/:id/import', async (req, res) => {
+        if (!flowStore) {
+            return res.status(500).json({ error: 'FlowStore not available' });
+        }
+        try {
+            const projectId = req.params.id;
+            const { flows, folders } = req.body;
+            if (!flows || !Array.isArray(flows)) {
+                return res.status(400).json({ error: 'Invalid import data: flows array required' });
+            }
+            const project = await projectStore.getProject(projectId);
+            if (!project) {
+                return res.status(404).json({ error: 'Project not found' });
+            }
+            // Import folders first
+            const folderIdMap = {};
+            if (folders && Array.isArray(folders)) {
+                for (const folderData of folders) {
+                    const newFolder = await projectStore.createFolder(projectId, {
+                        name: folderData.name,
+                        description: folderData.description
+                    });
+                    folderIdMap[folderData.id] = newFolder.id;
+                }
+            }
+            // Import flows
+            const importedFlows = [];
+            for (const flowData of flows) {
+                const newFlowData = {
+                    ...flowData,
+                    projectId,
+                    folderId: flowData.folderId ? folderIdMap[flowData.folderId] : null
+                };
+                delete newFlowData.id;
+                delete newFlowData.createdAt;
+                delete newFlowData.updatedAt;
+                const newFlow = await flowStore.createFlow(newFlowData);
+                importedFlows.push(newFlow);
+            }
+            res.json({
+                message: 'Project imported successfully',
+                importedFlows: importedFlows.length,
+                importedFolders: Object.keys(folderIdMap).length
+            });
+        }
+        catch (error) {
+            console.error('Failed to import project:', error);
+            res.status(500).json({ error: 'Failed to import project' });
         }
     });
     return router;

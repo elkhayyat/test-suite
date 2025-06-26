@@ -29,6 +29,7 @@ class FlowStore {
         try {
             const collections = this.mongodb.getCollections();
             const flows = await collections.flows.find({}).toArray();
+            console.log(`Retrieved ${flows.length} flows from database`);
             return flows;
         }
         catch (error) {
@@ -82,8 +83,16 @@ class FlowStore {
             updatedAt: data.updatedAt || new Date(),
         };
         try {
+            console.log('Creating flow:', { id: flow.id, name: flow.name, projectId: flow.projectId });
             const collections = this.mongodb.getCollections();
             await collections.flows.insertOne(flow);
+            console.log('Flow created successfully:', flow.id);
+            // Verify the flow was saved
+            const savedFlow = await collections.flows.findOne({ id: flow.id });
+            if (!savedFlow) {
+                console.error('Flow was not saved properly!');
+                throw new Error('Flow was not saved properly');
+            }
         }
         catch (error) {
             console.error('Failed to save flow to database:', error);

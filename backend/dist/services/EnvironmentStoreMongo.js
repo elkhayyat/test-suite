@@ -89,8 +89,10 @@ class EnvironmentStore {
     }
     async getEnvironmentVariables(environmentId) {
         try {
+            console.log('Getting environment variables for environment:', environmentId);
             const collections = this.mongodb.getCollections();
             const variables = await collections.environmentVariables.find({ environmentId }).toArray();
+            console.log(`Found ${variables.length} variables:`, variables.map(v => ({ key: v.key, value: v.isSecret ? '[HIDDEN]' : v.value })));
             return variables;
         }
         catch (error) {

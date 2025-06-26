@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Paper, Typography, List, ListItem, ListItemIcon, ListItemText, Divider, Chip } from '@mui/material';
+import { Box, Paper, Typography, List, ListItem, ListItemIcon, ListItemText, Divider } from '@mui/material';
 import HttpIcon from '@mui/icons-material/Http';
 import WebIcon from '@mui/icons-material/Web';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -8,6 +8,7 @@ import CodeIcon from '@mui/icons-material/Code';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import StorageIcon from '@mui/icons-material/Storage';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { TestStep } from '../../../shared/src/types';
 
 interface StepPanelProps {
@@ -22,6 +23,7 @@ export default function StepPanel({ onAddStep }: StepPanelProps) {
     { type: 'delay' as const, label: 'Delay', icon: <TimerIcon /> },
     { type: 'condition' as const, label: 'Condition', icon: <CodeIcon /> },
     { type: 'sql' as const, label: 'SQL Query', icon: <StorageIcon /> },
+    { type: 'subflow' as const, label: 'Sub-Flow', icon: <AccountTreeIcon /> },
   ];
 
   return (

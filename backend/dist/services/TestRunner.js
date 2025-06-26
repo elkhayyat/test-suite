@@ -7,7 +7,6 @@ exports.TestRunner = void 0;
 const uuid_1 = require("uuid");
 const axios_1 = __importDefault(require("axios"));
 const playwright_1 = require("playwright");
-const EnvironmentStore_1 = require("./EnvironmentStore");
 const VariableInterpolator_1 = require("./VariableInterpolator");
 class TestRunner {
     io;
@@ -16,10 +15,10 @@ class TestRunner {
     browser = null;
     activeRuns = new Set();
     environmentStore;
-    constructor(io, flowStore) {
+    constructor(io, flowStore, environmentStore) {
         this.io = io;
         this.flowStore = flowStore;
-        this.environmentStore = new EnvironmentStore_1.EnvironmentStore();
+        this.environmentStore = environmentStore;
     }
     getAllRuns() {
         return Array.from(this.runs.values());
@@ -65,7 +64,9 @@ class TestRunner {
     }
     async executeFlow(runId, flow, environmentId, selectedSteps) {
         // Load environment variables
+        console.log('Loading environment variables for environment:', environmentId);
         const variables = await this.environmentStore.getEnvironmentVariables(environmentId);
+        console.log(`Loaded ${variables.length} environment variables`);
         const interpolator = new VariableInterpolator_1.VariableInterpolator(variables);
         let executionOrder = this.calculateExecutionOrder(flow);
         // If selectedSteps is provided, filter to only run those steps
@@ -93,7 +94,7 @@ class TestRunner {
                     }
                     page = await this.browser.newPage();
                 }
-                const result = await this.executeStep(interpolatedStep, page);
+                const result = await this.executeStep(interpolatedStep, page, environmentId);
                 this.addStepResult(runId, result);
                 this.io.emit('step:updated', { runId, stepId: result.stepId, result });
                 if (result.status === 'failed') {
@@ -163,7 +164,7 @@ class TestRunner {
         }
         return order;
     }
-    async executeStep(step, page) {
+    async executeStep(step, page, environmentId) {
         const result = {
             stepId: step.id,
             status: 'running',
@@ -189,6 +190,9 @@ class TestRunner {
                 case 'sql':
                     result.output = await this.executeSqlStep(step);
                     break;
+                case 'subflow':
+                    result.output = await this.executeSubflowStep(step, environmentId || 'default');
+                    break;
             }
             result.status = 'passed';
         }
@@ -201,10 +205,26 @@ class TestRunner {
     }
     async executeHttpStep(step) {
         const config = step.config;
+        // Validate that URL doesn't contain unresolved variables
+        if (!config.url || typeof config.url !== 'string') {
+            throw new Error('URL is required and must be a string');
+        }
+        // Check for unresolved variables in URL
+        const unresolvedVariables = config.url.match(/\{\{(\w+)\}\}/g);
+        if (unresolvedVariables) {
+            throw new Error(`URL contains unresolved variables: ${unresolvedVariables.join(', ')}`);
+        }
+        // Validate URL format
+        try {
+            new URL(config.url);
+        }
+        catch (error) {
+            throw new Error(`Invalid URL format: ${config.url}`);
+        }
         const response = await (0, axios_1.default)({
-            method: config.method,
+            method: config.method || 'GET',
             url: config.url,
-            headers: config.headers,
+            headers: config.headers || {},
             data: config.body,
             timeout: config.timeout || 30000,
             validateStatus: config.validateStatus || (() => true),
@@ -280,16 +300,19 @@ class TestRunner {
             query: config.query,
             parameters: config.parameters
         });
-        // Mock result
-        return {
+        // Mock result - ensure it has proper output structure
+        const result = {
             rows: [
                 { id: 1, name: 'Test Record 1', created_at: new Date() },
                 { id: 2, name: 'Test Record 2', created_at: new Date() }
             ],
             rowCount: 2,
             executionTime: 45,
-            query: config.query
+            query: config.query,
+            summary: `Query executed successfully. ${2} rows returned in ${45}ms.`
         };
+        console.log('SQL step returning result:', result);
+        return result;
         // TODO: Implement actual SQL execution
         // Example implementation with pg (PostgreSQL):
         // const client = new Client({ connectionString: config.connectionString });
@@ -304,6 +327,81 @@ class TestRunner {
         // } finally {
         //   await client.end();
         // }
+    }
+    async executeSubflowStep(step, environmentId) {
+        const config = step.config;
+        // Validate config
+        if (!config.flowId) {
+            throw new Error('Sub-flow ID is required');
+        }
+        // Get the sub-flow
+        const subFlow = await this.flowStore.getFlow(config.flowId);
+        if (!subFlow) {
+            throw new Error(`Sub-flow with ID ${config.flowId} not found`);
+        }
+        // Determine environment to use
+        const subflowEnvironmentId = config.inheritEnvironment !== false ? environmentId : 'default';
+        // Load environment variables for sub-flow
+        const variables = await this.environmentStore.getEnvironmentVariables(subflowEnvironmentId);
+        const interpolator = new VariableInterpolator_1.VariableInterpolator(variables);
+        // Apply variable mapping if provided
+        if (config.variableMapping) {
+            // TODO: Implement variable mapping logic
+            // This would allow parent flow variables to be mapped to sub-flow variables
+        }
+        const executionOrder = this.calculateExecutionOrder(subFlow);
+        const subResults = [];
+        let page = null;
+        try {
+            for (const stepId of executionOrder) {
+                const subStep = subFlow.steps.find(s => s.id === stepId);
+                if (!subStep)
+                    continue;
+                // Interpolate variables in sub-step config
+                const interpolatedStep = {
+                    ...subStep,
+                    config: interpolator.interpolateStepConfig(subStep.config)
+                };
+                // Create browser page if needed for browser steps
+                if (subStep.type === 'browser' && !page) {
+                    if (!this.browser) {
+                        this.browser = await playwright_1.chromium.launch();
+                    }
+                    page = await this.browser.newPage();
+                }
+                const stepResult = await this.executeStep(interpolatedStep, page, subflowEnvironmentId);
+                subResults.push(stepResult);
+                // Emit sub-flow step update
+                this.io.emit('subflow:step:updated', {
+                    parentStepId: step.id,
+                    subflowId: config.flowId,
+                    stepId: stepResult.stepId,
+                    result: stepResult
+                });
+                if (stepResult.status === 'failed') {
+                    throw new Error(`Sub-flow step ${subStep.name} failed: ${stepResult.error}`);
+                }
+            }
+            return {
+                subflowId: config.flowId,
+                subflowName: subFlow.name,
+                stepResults: subResults,
+                totalSteps: subResults.length,
+                passedSteps: subResults.filter(r => r.status === 'passed').length,
+                failedSteps: subResults.filter(r => r.status === 'failed').length,
+                executionTime: subResults.reduce((total, r) => {
+                    if (r.startTime && r.endTime) {
+                        return total + (r.endTime.getTime() - r.startTime.getTime());
+                    }
+                    return total;
+                }, 0)
+            };
+        }
+        finally {
+            if (page) {
+                await page.close();
+            }
+        }
     }
     addStepResult(runId, result) {
         const run = this.runs.get(runId);

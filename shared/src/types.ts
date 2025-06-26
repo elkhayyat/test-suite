@@ -1,6 +1,6 @@
 export interface TestStep {
   id: string;
-  type: 'http' | 'browser' | 'assertion' | 'delay' | 'condition' | 'sql';
+  type: 'http' | 'browser' | 'assertion' | 'delay' | 'condition' | 'sql' | 'subflow';
   name: string;
   config: Record<string, any>;
   position?: { x: number; y: number };
@@ -83,6 +83,14 @@ export interface SqlStepConfig {
   query: string;
   parameters?: Record<string, any>;
   timeout?: number;
+}
+
+export interface SubflowStepConfig {
+  flowId: string;
+  flowName?: string;
+  timeout?: number;
+  inheritEnvironment?: boolean;
+  variableMapping?: Record<string, string>;
 }
 
 export interface Environment {
