@@ -20,10 +20,10 @@
 - [x] add right click menu to steps for duplicate, delete, copy, paste.
 - [x] multi-tenants, each tenant can invite users and create teams, the project permissions are related to teams, and the users are related to teams.
 - [x] add SQL query step.
-- [ ] add ability to extract request data from curl command.
-- [ ] ability to export and import entire project.
-- [ ] ability to export and import entire organization.
-- [ ] ability to export and import entire environment.
+- [x] add ability to extract request data from curl command.
+- [x] ability to export and import entire project.
+- [x] ability to export and import entire organization.
+- [x] ability to export and import entire environment.
 
 # Bugs
 - [x] nothing happens when clicking on show test runs.
@@ -58,5 +58,5 @@
 - [x] ability to delete steps.
 - [x] running the flow or single steps from flow details page should show the result of each step on the step itself.
 - [x] add run button to step right click menu to run this step.
-- [ ] split the step results into tabs.
-- [ ] add ability to run flow into another flow as a step.
+- [x] split the step results into tabs.
+- [x] add ability to run flow into another flow as a step.
