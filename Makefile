@@ -1,6 +1,6 @@
 # Test Flow Suite - Makefile
 
-.PHONY: help install dev dev-mongo dev-sqlite stop clean logs build start start-mongo docker-up docker-down docker-logs
+.PHONY: help install dev dev-mongo dev-sqlite stop clean logs build start start-mongo docker-up docker-down docker-logs test test-frontend test-backend test-coverage
 
 # Default target
 help:
@@ -25,6 +25,12 @@ help:
 	@echo "    make build            - Build all packages"
 	@echo "    make start            - Start production server (SQLite)"
 	@echo "    make start-mongo      - Start production server (MongoDB)"
+	@echo ""
+	@echo "  Testing:"
+	@echo "    make test             - Run all tests"
+	@echo "    make test-frontend    - Run frontend tests only"
+	@echo "    make test-backend     - Run backend tests only"
+	@echo "    make test-coverage    - Run tests with coverage report"
 	@echo ""
 	@echo "  Utilities:"
 	@echo "    make stop             - Stop all running processes"
@@ -106,6 +112,23 @@ clean:
 logs:
 	@echo "Application logs:"
 	@echo "Check terminal output or use 'make docker-logs' for MongoDB logs"
+
+# Testing commands
+test:
+	@echo "Running all tests..."
+	npm run test
+
+test-frontend:
+	@echo "Running frontend tests..."
+	npm run test:frontend
+
+test-backend:
+	@echo "Running backend tests..."
+	npm run test:backend
+
+test-coverage:
+	@echo "Running tests with coverage..."
+	npm run test:coverage
 
 # Quick restart
 restart: stop dev

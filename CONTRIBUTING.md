@@ -2,8 +2,37 @@
 
 Thank you for your interest in contributing to Test Flow Suite! This document provides comprehensive guidelines for contributing to this project.
 
+## Quick Start
+
+**Want to contribute right away? Here's the fastest path:**
+
+```bash
+# 1. Fork & clone the repo
+git clone https://github.com/your-username/test-flow-suite.git
+cd test-flow-suite
+
+# 2. Install dependencies
+make install
+
+# 3. Start development environment
+make dev
+
+# 4. Create a feature branch
+git checkout -b feat/your-feature-name
+
+# 5. Make changes, test, and commit
+git add .
+git commit -m "feat: add your amazing feature"
+
+# 6. Open a pull request
+gh pr create --title "feat: add your amazing feature"
+```
+
+**New to the project?** Read the [Getting Started](#getting-started) section below for detailed setup instructions.
+
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [Code of Conduct](#code-of-conduct)
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
@@ -190,67 +219,348 @@ instead of simple success/failure status.
 ## Code Style Guidelines
 
 ### TypeScript/JavaScript
-- Use TypeScript for all new code
-- Follow existing code patterns and conventions
-- Use meaningful variable and function names
-- Prefer `const` over `let`, avoid `var`
-- Use async/await over Promises when possible
+
+**✅ Good Examples:**
+```typescript
+// Use meaningful names and const
+const testExecutionTimeout = 5000;
+const activeFlowSteps = flow.steps.filter(step => step.enabled);
+
+// Prefer async/await
+async function executeTestFlow(flowId: string): Promise<TestResult> {
+  try {
+    const flow = await flowStore.getFlow(flowId);
+    const result = await testRunner.execute(flow);
+    return result;
+  } catch (error) {
+    logger.error('Flow execution failed:', error);
+    throw new FlowExecutionError(`Failed to execute flow ${flowId}`);
+  }
+}
+```
+
+**❌ Bad Examples:**
+```typescript
+// Avoid vague names and var
+var t = 5000;
+let data = flow.steps.filter(s => s.e);
+
+// Avoid Promise chains when async/await is clearer
+function executeTestFlow(flowId: string): Promise<TestResult> {
+  return flowStore.getFlow(flowId)
+    .then(flow => testRunner.execute(flow))
+    .then(result => result)
+    .catch(error => {
+      throw error;
+    });
+}
+```
 
 ### React Components
-- Use functional components with hooks
-- Follow existing component structure patterns
-- Use TypeScript interfaces for props
-- Prefer named exports over default exports
-- Keep components focused and single-purpose
+
+**✅ Good Examples:**
+```typescript
+// Functional component with proper TypeScript
+import React, { useState, useEffect } from 'react';
+import { FlowType } from '../../shared/src/types';
+
+interface FlowEditorProps {
+  flowId: string;
+  onSave: (flow: FlowType) => void;
+  readonly?: boolean;
+}
+
+export function FlowEditor({ flowId, onSave, readonly = false }: FlowEditorProps) {
+  const [flow, setFlow] = useState<FlowType | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadFlow();
+  }, [flowId]);
+
+  const loadFlow = async () => {
+    try {
+      setLoading(true);
+      const loadedFlow = await api.getFlow(flowId);
+      setFlow(loadedFlow);
+    } catch (error) {
+      console.error('Failed to load flow:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <LoadingSpinner />;
+  if (!flow) return <div>Flow not found</div>;
+
+  return (
+    <div className="flow-editor">
+      {/* Component content */}
+    </div>
+  );
+}
+```
+
+**❌ Bad Examples:**
+```typescript
+// Class component (avoid for new code)
+class FlowEditor extends React.Component<any, any> {
+  // Implementation...
+}
+
+// Missing TypeScript interfaces
+export default function FlowEditor(props) {
+  // No type safety
+}
+```
 
 ### Backend Services
-- Follow dependency injection patterns
-- Use TypeScript interfaces for service contracts
-- Implement proper error handling
-- Add appropriate logging
-- Follow RESTful API conventions
 
-### File Organization
-- Group related functionality together
-- Use clear, descriptive file names
-- Follow existing directory structure
-- Keep files focused and not overly large
+**✅ Good Examples:**
+```typescript
+// Service with dependency injection and proper interfaces
+export interface ITestRunner {
+  execute(flow: FlowType): Promise<TestResult>;
+  stop(executionId: string): Promise<void>;
+}
 
-### Imports
+export class TestRunner implements ITestRunner {
+  constructor(
+    private flowStore: IFlowStore,
+    private logger: ILogger,
+    private socketEmitter: ISocketEmitter
+  ) {}
+
+  async execute(flow: FlowType): Promise<TestResult> {
+    const executionId = generateId();
+    
+    try {
+      this.logger.info(`Starting flow execution: ${flow.id}`);
+      this.socketEmitter.emit('test-started', { flowId: flow.id, executionId });
+      
+      const result = await this.executeSteps(flow.steps);
+      
+      this.socketEmitter.emit('test-completed', { 
+        flowId: flow.id, 
+        executionId, 
+        result 
+      });
+      
+      return result;
+    } catch (error) {
+      this.logger.error(`Flow execution failed: ${flow.id}`, error);
+      this.socketEmitter.emit('test-failed', { 
+        flowId: flow.id, 
+        executionId, 
+        error: error.message 
+      });
+      throw new TestExecutionError(`Flow ${flow.id} execution failed: ${error.message}`);
+    }
+  }
+}
+```
+
+**❌ Bad Examples:**
+```typescript
+// No dependency injection, hard-coded dependencies
+export class TestRunner {
+  async execute(flow: any) {
+    // Direct database access (should use injected store)
+    const db = getDatabase();
+    
+    // No error handling
+    const result = await this.runSteps(flow.steps);
+    return result;
+  }
+}
+```
+
+### API Routes
+
+**✅ Good Examples:**
+```typescript
+// RESTful routes with proper error handling
+export function createFlowRoutes(flowStore: IFlowStore): Router {
+  const router = Router();
+
+  router.get('/flows/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      if (!isValidUUID(id)) {
+        return res.status(400).json({ 
+          error: 'Invalid flow ID format' 
+        });
+      }
+
+      const flow = await flowStore.getFlow(id);
+      
+      if (!flow) {
+        return res.status(404).json({ 
+          error: 'Flow not found' 
+        });
+      }
+
+      res.json(flow);
+    } catch (error) {
+      logger.error('Failed to get flow:', error);
+      res.status(500).json({ 
+        error: 'Internal server error' 
+      });
+    }
+  });
+
+  return router;
+}
+```
+
+### File Organization & Imports
+
+**✅ Good Example:**
 ```typescript
 // External libraries first
-import React from 'react';
-import express from 'express';
+import express, { Router, Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
 
-// Internal imports by hierarchy
-import { FlowType } from '../../shared/src/types';
-import { TestRunner } from '../services/TestRunner';
+// Shared types
+import { FlowType, TestResult } from '../../shared/src/types';
+
+// Local services (by dependency hierarchy)
+import { IFlowStore } from '../services/FlowStore';
+import { ITestRunner } from '../services/TestRunner';
+import { logger } from '../utils/logger';
+import { validateFlow, isValidUUID } from '../utils/validation';
+```
+
+**❌ Bad Example:**
+```typescript
+// Mixed import order
 import { validateFlow } from '../utils/validation';
+import express from 'express';
+import { FlowType } from '../../shared/src/types';
+import { logger } from '../utils/logger';
+import { IFlowStore } from '../services/FlowStore';
+```
+
+### Naming Conventions
+
+**✅ Good Examples:**
+```typescript
+// Components: PascalCase
+export function FlowEditor() {}
+export function StepConfigPanel() {}
+
+// Functions & variables: camelCase
+const executeTestFlow = async () => {};
+const testExecutionResults = [];
+
+// Constants: SCREAMING_SNAKE_CASE
+const DEFAULT_TIMEOUT = 5000;
+const MAX_RETRY_COUNT = 3;
+
+// Types & Interfaces: PascalCase with 'I' prefix for interfaces
+interface IFlowStore {}
+type FlowExecutionStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+// Files: kebab-case or camelCase (be consistent within directories)
+// flow-editor.tsx, stepConfigPanel.tsx
 ```
 
 ## Testing Guidelines
 
-### Current State
-- No formal test suite setup currently
-- Manual testing required for all changes
-- Consider adding tests for new functionality
+### Testing Framework Setup
+
+The project uses different testing frameworks for frontend and backend:
+
+**Frontend (Vitest + React Testing Library):**
+```bash
+npm run test:frontend        # Run tests in watch mode
+npm run test:run             # Run tests once
+npm run test:coverage        # Run with coverage
+```
+
+**Backend (Jest + Supertest):**
+```bash
+npm run test:backend         # Run tests
+npm run test:watch           # Run in watch mode  
+npm run test:coverage        # Run with coverage
+```
+
+**All Tests:**
+```bash
+make test                    # Run all tests
+make test-coverage           # Run with coverage
+```
+
+### Writing Tests
+
+**Frontend Component Tests:**
+```typescript
+import { render, screen, fireEvent } from '@testing-library/react';
+import { FlowEditor } from '../FlowEditor';
+
+describe('FlowEditor', () => {
+  it('should render flow editor', () => {
+    render(<FlowEditor flowId="123" onSave={vi.fn()} />);
+    expect(screen.getByText('Flow Editor')).toBeInTheDocument();
+  });
+});
+```
+
+**Backend Service Tests:**
+```typescript
+import { TestRunner } from '../TestRunner';
+
+describe('TestRunner', () => {
+  it('should execute flow successfully', async () => {
+    const testRunner = new TestRunner(mockFlowStore, mockLogger, mockSocket);
+    const result = await testRunner.execute(mockFlow);
+    expect(result.success).toBe(true);
+  });
+});
+```
+
+**API Route Tests:**
+```typescript
+import request from 'supertest';
+import { app } from '../app';
+
+describe('Flow API', () => {
+  it('should get flow by id', async () => {
+    const response = await request(app)
+      .get('/api/flows/123')
+      .expect(200);
+    
+    expect(response.body.id).toBe('123');
+  });
+});
+```
+
+### Testing Best Practices
+
+- **Unit Tests**: Test individual functions and components in isolation
+- **Integration Tests**: Test API endpoints and service interactions
+- **Mocking**: Mock external dependencies (database, socket.io, etc.)
+- **Coverage**: Aim for >80% code coverage on new code
+- **Test Structure**: Use `describe/it` blocks with clear, descriptive names
 
 ### Testing Checklist
-- [ ] Test happy path scenarios
-- [ ] Test error conditions and edge cases
+- [ ] Write unit tests for new utility functions
+- [ ] Add component tests for new React components
+- [ ] Test API endpoints with various inputs and edge cases
+- [ ] Mock external dependencies properly
+- [ ] Test both happy path and error scenarios
+- [ ] Verify TypeScript compilation in tests
+- [ ] Run tests locally before submitting PR
+- [ ] Check test coverage reports
+
+### Manual Testing Checklist
 - [ ] Test with both SQLite and MongoDB backends
 - [ ] Test real-time updates via Socket.io
-- [ ] Test frontend UI interactions
-- [ ] Test API endpoints with various inputs
+- [ ] Test frontend UI interactions across browsers
 - [ ] Verify no console errors or warnings
-
-### Manual Testing
-1. Start development environment
-2. Create and run test flows
-3. Verify all step types work correctly
-4. Test import/export functionality
-5. Check real-time execution monitoring
-6. Test project/folder organization
+- [ ] Test import/export functionality
+- [ ] Check responsive design on different screen sizes
 
 ## Pull Request Process
 

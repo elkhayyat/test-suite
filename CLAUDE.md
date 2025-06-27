@@ -41,8 +41,14 @@ Test Flow Suite is a web-based test automation platform with visual flow editing
 - `make start-mongo` - Start production server (MongoDB)
 
 ### Testing
-- No formal test suite setup currently
-- `frontend/src/utils/curlParser.test.ts` - Manual curl parser tests (browser console)
+- `npm test` - Run all tests (frontend + backend)
+- `npm run test:frontend` - Run frontend tests with Vitest
+- `npm run test:backend` - Run backend tests with Jest
+- `npm run test:coverage` - Run tests with coverage reports
+- `make test` - Run all tests via Makefile
+- `make test-frontend` - Frontend tests only
+- `make test-backend` - Backend tests only
+- `make test-coverage` - Tests with coverage
 
 ### Utilities
 - `make stop` - Stop all running development processes
