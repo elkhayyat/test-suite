@@ -33,9 +33,11 @@ import TimerIcon from '@mui/icons-material/Timer';
 import CodeIcon from '@mui/icons-material/Code';
 import StorageIcon from '@mui/icons-material/Storage';
 import InfoIcon from '@mui/icons-material/Info';
-import { TestRun, TestStep, StepResult } from '../../../shared/src/types';
+import { TestRun, TestStep, StepResult, ConsoleLog } from '../../../shared/src/types';
 import { api } from '../services/api';
 import StatusIndicator from '../components/StatusIndicator';
+import InteractiveConsole from '../components/InteractiveConsole';
+import { ConsoleCommandExecutor } from '../services/ConsoleCommandExecutor';
 import { useSocket } from '../hooks/useSocket';
 
 export default function TestRunDetails() {
@@ -47,6 +49,8 @@ export default function TestRunDetails() {
   const [expandedSteps, setExpandedSteps] = useState<{ [stepId: string]: boolean }>({});
   const [stepActiveTabs, setStepActiveTabs] = useState<{ [stepId: string]: number }>({});
   const [loading, setLoading] = useState(true);
+  const [commandExecutor] = useState(() => new ConsoleCommandExecutor());
+  const [environmentVariables, setEnvironmentVariables] = useState<any[]>([]);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -90,12 +94,31 @@ export default function TestRunDetails() {
       }
     };
 
+    const handleConsoleLog = (data: { runId: string; stepId: string; log: ConsoleLog }) => {
+      if (data.runId === runId && run) {
+        // Update the specific step result with new log
+        setRun(prevRun => {
+          if (!prevRun) return prevRun;
+          const updatedResults = [...prevRun.results];
+          const existingIndex = updatedResults.findIndex(r => r.stepId === data.stepId);
+          if (existingIndex >= 0) {
+            const result = { ...updatedResults[existingIndex] };
+            result.logs = [...(result.logs || []), data.log];
+            updatedResults[existingIndex] = result;
+          }
+          return { ...prevRun, results: updatedResults };
+        });
+      }
+    };
+
     socket.on('run:updated', handleRunUpdate);
     socket.on('step:updated', handleStepUpdate);
+    socket.on('console:log', handleConsoleLog);
 
     return () => {
       socket.off('run:updated', handleRunUpdate);
       socket.off('step:updated', handleStepUpdate);
+      socket.off('console:log', handleConsoleLog);
     };
   }, [socket, runId, run]);
 
@@ -108,6 +131,16 @@ export default function TestRunDetails() {
       // Load flow data
       const flowData = await api.getFlow(runData.flowId);
       setFlow(flowData);
+      
+      // Load environment variables if environment is set
+      if (runData.environmentId) {
+        try {
+          const variables = await api.getEnvironmentVariables(runData.environmentId);
+          setEnvironmentVariables(variables);
+        } catch (error) {
+          console.error('Failed to load environment variables:', error);
+        }
+      }
     } catch (error) {
       console.error('Failed to load run details:', error);
     } finally {
@@ -157,6 +190,37 @@ export default function TestRunDetails() {
     const duration = new Date(end).getTime() - new Date(start).getTime();
     if (duration < 1000) return `${duration}ms`;
     return `${(duration / 1000).toFixed(2)}s`;
+  };
+
+  const handleStepConsoleCommand = (stepId: string, command: string) => {
+    // Get all step results for context
+    const allStepResults: { [stepId: string]: StepResult } = {};
+    run?.results.forEach(result => {
+      allStepResults[result.stepId] = result;
+    });
+
+    // Update command executor context
+    commandExecutor.updateContext({
+      environmentVariables,
+      stepResults: allStepResults,
+      currentStep: stepId
+    });
+
+    // Execute command and get logs
+    const commandLogs = commandExecutor.executeCommand(command);
+    
+    // Add command logs to the step's logs
+    setRun(prevRun => {
+      if (!prevRun) return prevRun;
+      const updatedResults = [...prevRun.results];
+      const existingIndex = updatedResults.findIndex(r => r.stepId === stepId);
+      if (existingIndex >= 0) {
+        const result = { ...updatedResults[existingIndex] };
+        result.logs = [...(result.logs || []), ...commandLogs];
+        updatedResults[existingIndex] = result;
+      }
+      return { ...prevRun, results: updatedResults };
+    });
   };
 
   if (loading || !run || !flow) {
@@ -456,6 +520,25 @@ export default function TestRunDetails() {
                                     {result.error}
                                   </Typography>
                                 </Alert>
+                              )
+                            });
+                          }
+
+                          // Console tab
+                          if (result.logs && result.logs.length > 0) {
+                            tabs.push({
+                              label: `Console (${result.logs.length})`,
+                              content: (
+                                <InteractiveConsole 
+                                  logs={result.logs} 
+                                  maxHeight={400}
+                                  autoScroll={true}
+                                  onCommand={(cmd) => handleStepConsoleCommand(step.id, cmd)}
+                                  context={{
+                                    environmentVariables,
+                                    stepResults: { [step.id]: result }
+                                  }}
+                                />
                               )
                             });
                           }

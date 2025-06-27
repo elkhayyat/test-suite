@@ -17,19 +17,26 @@ import {
   Alert,
   Snackbar,
   Tooltip,
+  InputAdornment,
+  IconButton,
 } from '@mui/material';
 import ContentPasteIcon from '@mui/icons-material/ContentPaste';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { TestStep, HttpStepConfig, BrowserStepConfig, AssertionStepConfig, DelayStepConfig, ConditionStepConfig, SqlStepConfig, SubflowStepConfig, TestFlow } from '../../../shared/src/types';
 import { api } from '../services/api';
 import { parseCurlCommand, generateCurlCommand } from '../utils/curlParser';
+import StepReferenceField from './StepReferenceField';
+import { GENERATOR_FUNCTIONS } from '../utils/randomGenerators';
 
 interface StepConfigPanelProps {
   step: TestStep;
   onUpdate: (step: TestStep) => void;
   onClose: () => void;
+  availableSteps?: TestStep[];
 }
 
-export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigPanelProps) {
+export default function StepConfigPanel({ step, onUpdate, onClose, availableSteps = [] }: StepConfigPanelProps) {
   const [headersText, setHeadersText] = useState('');
   const [bodyText, setBodyText] = useState('');
   const [availableFlows, setAvailableFlows] = useState<TestFlow[]>([]);
@@ -37,12 +44,24 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
   const [curlCommand, setCurlCommand] = useState('');
   const [curlError, setCurlError] = useState('');
   const [curlSuccess, setCurlSuccess] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [randomHelpOpen, setRandomHelpOpen] = useState(false);
   
   useEffect(() => {
     if (step.type === 'http') {
       const config = step.config as HttpStepConfig;
       setHeadersText(config.headers ? JSON.stringify(config.headers, null, 2) : '{}');
-      setBodyText(config.body ? JSON.stringify(config.body, null, 2) : '');
+      
+      // Handle body - it might be a string with interpolation or an object
+      if (config.body) {
+        if (typeof config.body === 'string') {
+          setBodyText(config.body);
+        } else {
+          setBodyText(JSON.stringify(config.body, null, 2));
+        }
+      } else {
+        setBodyText('');
+      }
     }
     
     // Load available flows for subflow configuration
@@ -74,6 +93,16 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
     });
   };
 
+  const handleCopyStepId = async () => {
+    try {
+      await navigator.clipboard.writeText(step.id);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy step ID:', error);
+    }
+  };
+
   const handleCurlImport = () => {
     try {
       const parsed = parseCurlCommand(curlCommand);
@@ -86,7 +115,7 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
           url: parsed.url,
           headers: parsed.headers,
           body: parsed.body,
-          timeout: parsed.timeout || 30000,
+          timeout: parsed.timeout || 1000,
         },
       });
 
@@ -160,12 +189,14 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
           </Tooltip>
         </Box>
         
-        <TextField
+        <StepReferenceField
           fullWidth
           label="URL"
           value={config.url || ''}
-          onChange={(e) => handleChange('url', e.target.value)}
+          onChange={(value) => handleChange('url', value)}
           margin="normal"
+          availableSteps={availableSteps}
+          helperText="Use {{variableName}} for environment variables or $stepId.path for step outputs"
         />
         <TextField
           fullWidth
@@ -185,36 +216,82 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
           margin="normal"
           helperText='Enter headers as JSON object, e.g., {"Authorization": "Bearer token"}'
         />
-        <TextField
-          fullWidth
-          label="Body (JSON)"
-          value={bodyText}
-          onChange={(e) => setBodyText(e.target.value)}
-          onBlur={() => {
-            try {
+        <Box sx={{ position: 'relative' }}>
+          <StepReferenceField
+            fullWidth
+            label="Body (JSON)"
+            value={bodyText}
+            onChange={(value) => {
+              setBodyText(value);
+              // Process on blur will be handled by onBlur
+            }}
+            onBlur={() => {
               if (bodyText.trim()) {
-                const parsed = JSON.parse(bodyText);
-                handleChange('body', parsed);
+                // Check if the body contains interpolation syntax
+                const hasInterpolation = bodyText.includes('{{') || bodyText.includes('$');
+                
+                if (hasInterpolation) {
+                  // Save as string for interpolation
+                  handleChange('body', bodyText);
+                } else {
+                  // Try to parse as JSON
+                  try {
+                    const parsed = JSON.parse(bodyText);
+                    handleChange('body', parsed);
+                  } catch (e) {
+                    // If not valid JSON and no interpolation, save as string
+                    handleChange('body', bodyText);
+                  }
+                }
               } else {
                 handleChange('body', null);
               }
-            } catch (e) {
-              // Keep the text as is if invalid JSON
-            }
-          }}
-          multiline
-          rows={4}
-          margin="normal"
-          helperText="Enter request body as JSON"
-        />
+            }}
+            multiline
+            rows={4}
+            margin="normal"
+            availableSteps={availableSteps}
+            helperText="Use {{variableName}}, $stepId.path, or $random.type() for dynamic values"
+          />
+          <IconButton 
+            size="small" 
+            onClick={() => setRandomHelpOpen(true)}
+            sx={{ position: 'absolute', top: 8, right: 8 }}
+            title="Random value generators help"
+          >
+            <HelpOutlineIcon fontSize="small" />
+          </IconButton>
+        </Box>
         <TextField
           fullWidth
           label="Timeout (ms)"
           type="number"
-          value={config.timeout || 30000}
+          value={config.timeout || 1000}
           onChange={(e) => handleChange('timeout', parseInt(e.target.value))}
           margin="normal"
         />
+        <TextField
+          fullWidth
+          label="Retries"
+          type="number"
+          value={config.retries || 0}
+          onChange={(e) => handleChange('retries', parseInt(e.target.value))}
+          margin="normal"
+          helperText="Number of retry attempts if request fails"
+          inputProps={{ min: 0, max: 10 }}
+        />
+        {(config.retries || 0) > 0 && (
+          <TextField
+            fullWidth
+            label="Retry Delay (ms)"
+            type="number"
+            value={config.retryDelay || 1000}
+            onChange={(e) => handleChange('retryDelay', parseInt(e.target.value))}
+            margin="normal"
+            helperText="Delay between retry attempts"
+            inputProps={{ min: 0, max: 60000 }}
+          />
+        )}
       </>
     );
   };
@@ -247,19 +324,21 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
           />
         )}
         {(config.action === 'navigate' || config.action === 'type') && (
-          <TextField
+          <StepReferenceField
             fullWidth
             label="Value"
             value={config.value || ''}
-            onChange={(e) => handleChange('value', e.target.value)}
+            onChange={(value) => handleChange('value', value)}
             margin="normal"
+            availableSteps={availableSteps}
+            helperText={config.action === 'navigate' ? 'URL to navigate to' : 'Text to type'}
           />
         )}
         <TextField
           fullWidth
           label="Timeout (ms)"
           type="number"
-          value={config.timeout || 30000}
+          value={config.timeout || 1000}
           onChange={(e) => handleChange('timeout', parseInt(e.target.value))}
           margin="normal"
         />
@@ -284,20 +363,24 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
             <MenuItem value="custom">Custom</MenuItem>
           </Select>
         </FormControl>
-        <TextField
+        <StepReferenceField
           fullWidth
           label="Source (JSONPath or variable)"
           value={config.source || ''}
-          onChange={(e) => handleChange('source', e.target.value)}
+          onChange={(value) => handleChange('source', value)}
           margin="normal"
+          availableSteps={availableSteps}
+          helperText="Use {{variableName}} for environment variables or $stepId.path for step outputs"
         />
         {config.type !== 'exists' && config.type !== 'custom' && (
-          <TextField
+          <StepReferenceField
             fullWidth
             label="Expected Value"
             value={config.expected || ''}
-            onChange={(e) => handleChange('expected', e.target.value)}
+            onChange={(value) => handleChange('expected', value)}
             margin="normal"
+            availableSteps={availableSteps}
+            helperText="Use {{variableName}} for environment variables or $stepId.path for step outputs"
           />
         )}
         {config.type === 'custom' && (
@@ -344,19 +427,35 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
           margin="normal"
           helperText="JavaScript expression that returns true/false"
         />
-        <TextField
+        <Autocomplete
           fullWidth
-          label="True Target Step ID"
-          value={config.trueTarget || ''}
-          onChange={(e) => handleChange('trueTarget', e.target.value)}
-          margin="normal"
+          options={availableSteps.filter(s => s.id !== step.id)}
+          getOptionLabel={(option) => `${option.name} (${option.id})`}
+          value={availableSteps.find(s => s.id === config.trueTarget) || null}
+          onChange={(_, newValue) => handleChange('trueTarget', newValue?.id || '')}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="True Target Step"
+              margin="normal"
+              helperText="Step to execute when condition is true"
+            />
+          )}
         />
-        <TextField
+        <Autocomplete
           fullWidth
-          label="False Target Step ID"
-          value={config.falseTarget || ''}
-          onChange={(e) => handleChange('falseTarget', e.target.value)}
-          margin="normal"
+          options={availableSteps.filter(s => s.id !== step.id)}
+          getOptionLabel={(option) => `${option.name} (${option.id})`}
+          value={availableSteps.find(s => s.id === config.falseTarget) || null}
+          onChange={(_, newValue) => handleChange('falseTarget', newValue?.id || '')}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="False Target Step"
+              margin="normal"
+              helperText="Step to execute when condition is false"
+            />
+          )}
         />
       </>
     );
@@ -405,7 +504,7 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
           fullWidth
           label="Timeout (ms)"
           type="number"
-          value={config.timeout || 30000}
+          value={config.timeout || 1000}
           onChange={(e) => handleChange('timeout', parseInt(e.target.value))}
           margin="normal"
         />
@@ -514,34 +613,49 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
   };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, pb: 0 }}>
         <Typography variant="h6">Step Configuration</Typography>
         <Button size="small" onClick={onClose}>Close</Button>
       </Box>
       
-      <TextField
-        fullWidth
-        label="Step ID"
-        value={step.id}
-        disabled
-        margin="normal"
-        InputProps={{
-          style: { fontFamily: 'monospace' }
-        }}
-      />
-      
-      <TextField
-        fullWidth
-        label="Step Name"
-        value={step.name}
-        onChange={(e) => handleNameChange(e.target.value)}
-        margin="normal"
-      />
-      
-      <Divider sx={{ my: 2 }} />
-      
-      {renderConfig()}
+      <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
+        <TextField
+          fullWidth
+          label="Step ID"
+          value={step.id}
+          disabled
+          margin="normal"
+          InputProps={{
+            style: { fontFamily: 'monospace' },
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip title="Copy Step ID">
+                  <IconButton
+                    size="small"
+                    onClick={handleCopyStepId}
+                    edge="end"
+                  >
+                    <ContentCopyIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+        />
+        
+        <TextField
+          fullWidth
+          label="Step Name"
+          value={step.name}
+          onChange={(e) => handleNameChange(e.target.value)}
+          margin="normal"
+        />
+        
+        <Divider sx={{ my: 2 }} />
+        
+        {renderConfig()}
+      </Box>
 
       {/* Curl Import Dialog */}
       <Dialog open={curlDialogOpen} onClose={() => setCurlDialogOpen(false)} maxWidth="md" fullWidth>
@@ -582,6 +696,33 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
         </DialogActions>
       </Dialog>
 
+      {/* Random Generators Help Dialog */}
+      <Dialog open={randomHelpOpen} onClose={() => setRandomHelpOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Random Value Generators</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Use these generators in your request body, headers, or URLs to generate random values at runtime.
+          </Alert>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {Object.entries(GENERATOR_FUNCTIONS).map(([key, generator]) => (
+              <Box key={key} sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{generator.name}</Typography>
+                <Typography variant="body2" color="text.secondary">{generator.description}</Typography>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', display: 'block', mt: 1 }}>
+                  Syntax: {generator.syntax}
+                </Typography>
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', display: 'block', color: 'primary.main' }}>
+                  Example: {generator.example}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRandomHelpOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Success/Error Snackbar */}
       <Snackbar
         open={curlSuccess}
@@ -590,6 +731,18 @@ export default function StepConfigPanel({ step, onUpdate, onClose }: StepConfigP
       >
         <Alert severity="success" onClose={() => setCurlSuccess(false)}>
           {curlDialogOpen ? 'curl command imported successfully!' : 'curl command copied to clipboard!'}
+        </Alert>
+      </Snackbar>
+
+      {/* Copy Success Snackbar */}
+      <Snackbar
+        open={copySuccess}
+        autoHideDuration={2000}
+        onClose={() => setCopySuccess(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" onClose={() => setCopySuccess(false)}>
+          Step ID copied to clipboard!
         </Alert>
       </Snackbar>
     </Box>

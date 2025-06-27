@@ -43,6 +43,14 @@ export interface StepResult {
   endTime?: Date;
   output?: any;
   error?: string;
+  logs?: ConsoleLog[];
+}
+
+export interface ConsoleLog {
+  timestamp: Date;
+  level: 'log' | 'info' | 'warn' | 'error' | 'debug' | 'command';
+  message: string;
+  details?: any;
 }
 
 export interface HttpStepConfig {
@@ -52,6 +60,8 @@ export interface HttpStepConfig {
   body?: any;
   timeout?: number;
   validateStatus?: (status: number) => boolean;
+  retries?: number;
+  retryDelay?: number; // delay between retries in ms
 }
 
 export interface BrowserStepConfig {

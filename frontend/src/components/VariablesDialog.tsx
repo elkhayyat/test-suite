@@ -27,8 +27,10 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { Environment, EnvironmentVariable } from '../../../shared/src/types';
 import { api } from '../services/api';
+import { GENERATOR_FUNCTIONS } from '../utils/randomGenerators';
 
 interface VariablesDialogProps {
   open: boolean;
@@ -42,6 +44,7 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
   const [showSecrets, setShowSecrets] = useState(false);
   const [loading, setLoading] = useState(false);
   const [editingVariable, setEditingVariable] = useState<{ originalKey: string; key: string; value: string } | null>(null);
+  const [randomHelpOpen, setRandomHelpOpen] = useState(false);
 
   useEffect(() => {
     if (open && environment) {
@@ -150,15 +153,25 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
   };
 
   return (
+    <>
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
         {environment ? `Variables for ${environment.name}` : 'Environment Variables'}
       </DialogTitle>
       <DialogContent>
         <Box sx={{ mb: 3 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Use variables in your test steps with {'{{variableName}}'} syntax
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Use variables in your test steps with {'{{variableName}}'} syntax or $random.type() for dynamic values
+            </Typography>
+            <IconButton 
+              size="small" 
+              onClick={() => setRandomHelpOpen(true)}
+              sx={{ padding: 0.5 }}
+            >
+              <HelpOutlineIcon fontSize="small" />
+            </IconButton>
+          </Box>
           
           <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
             <TextField
@@ -318,5 +331,36 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
+
+    {/* Random Generators Help Dialog */}
+    <Dialog open={randomHelpOpen} onClose={() => setRandomHelpOpen(false)} maxWidth="md" fullWidth>
+      <DialogTitle>Random Value Generators</DialogTitle>
+      <DialogContent>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Use these generators in your environment variable values to generate random values at runtime.
+            Values will be generated each time the variable is used in a test step.
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {Object.entries(GENERATOR_FUNCTIONS).map(([key, generator]) => (
+            <Box key={key} sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>{generator.name}</Typography>
+              <Typography variant="body2" color="text.secondary">{generator.description}</Typography>
+              <Typography variant="caption" sx={{ fontFamily: 'monospace', display: 'block', mt: 1 }}>
+                Syntax: {generator.syntax}
+              </Typography>
+              <Typography variant="caption" sx={{ fontFamily: 'monospace', display: 'block', color: 'primary.main' }}>
+                Example: {generator.example}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setRandomHelpOpen(false)}>Close</Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }

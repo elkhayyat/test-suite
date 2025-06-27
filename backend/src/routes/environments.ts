@@ -125,3 +125,35 @@ environmentRoutes.delete('/:id/variables/:key', async (req, res) => {
     res.status(500).json({ error: 'Failed to delete environment variable' });
   }
 });
+
+// Duplicate environment
+environmentRoutes.post('/:id/duplicate', async (req, res) => {
+  try {
+    const sourceEnv = await environmentStore.getEnvironment(req.params.id);
+    if (!sourceEnv) {
+      return res.status(404).json({ error: 'Environment not found' });
+    }
+
+    // Create new environment with "(Copy)" suffix
+    const newEnv = await environmentStore.createEnvironment({
+      name: `${sourceEnv.name} (Copy)`,
+      description: sourceEnv.description,
+      isDefault: false
+    });
+
+    // Copy all variables from source environment
+    const variables = await environmentStore.getEnvironmentVariables(req.params.id);
+    for (const variable of variables) {
+      await environmentStore.setEnvironmentVariable(
+        newEnv.id,
+        variable.key,
+        variable.value,
+        variable.isSecret
+      );
+    }
+
+    res.status(201).json(newEnv);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to duplicate environment' });
+  }
+});

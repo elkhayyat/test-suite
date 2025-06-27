@@ -24,8 +24,12 @@
 - [x] ability to export and import entire project.
 - [x] ability to export and import entire organization.
 - [x] ability to export and import entire environment.
-- [ ] add ability to enter number of retries for each request, if it fails with the same error return failed.
+- [x] add ability to enter number of retries for each request, if it fails with the same error return failed.
 - [ ] add ability to import openapi schema and generate requests from it to be added to the project.
+- [x] add console to be able to debug output.
+- [x] add ability to generate random numbers and strings to be added to request body to prevent errors on unique fields.
+- [x] add ability to generate random numbers and strings to be added to environment variables.
+
 
 
 # Bugs
@@ -50,8 +54,11 @@
 - [x] Nothing happens after clicking submit to create an organization.
 - [x] URL contains unresolved variables: {{baseUrl}}.
 - [x] when trying to run an HTTP request step I got failed, but it did not call the URL.
-- [ ] drag and drop function for moving flows between folders and projects not working.
-- [ ] can't navigate between error and info tabs in step results inside flow page.
+- [x] drag and drop function for moving flows between folders and projects not working.
+- [x] can't navigate between error and info tabs in step results inside step card.
+- [x] Failed to move flow. Please try again.
+- [x] if i copied a step from a flow, i can't paste it an another flow
+- [ ] running a single step clear all other steps status
 
 # TODOs
 - [x] folders should always be visible under project, even if the project has flows without folders.
@@ -65,7 +72,18 @@
 - [x] add run button to step right click menu to run this step.
 - [x] split the step results into tabs.
 - [x] add ability to run flow into another flow as a step.
-- [ ] set default timeout for requests to 1000ms and for flows to be 5000ms.
+- [x] set default timeout for requests to 1000ms and for flows to be 5000ms.
 - [x] add visualization for step card that show its status if it is running or failed or passed.
-- [ ] don't expand step results automatically
-- [ ] add ability to vertically scroll through step configuration.
+- [x] don't expand step results automatically
+- [x] add ability to vertically scroll through step configuration.
+- [x] add ability to duplicate environment.
+- [x] ability to autocomplete step ids by entering step id or step name when trying to access them.
+- [x] ability to copy step id.
+- [x] use ctrl + s to save.
+- [x] enable autocomplete for tep ids in http request step fields
+- [x] if i run a flow through dashboard page, i should be able to see the result of the flow in the same page.
+- [x] don't redirect to test runs page, show the result on the same page.
+- [x] add auto complete for step id to assertion fields.
+- [ ] add ability to run a full folder or project flows in the dashboard page.
+- [ ] add project/folders/flows explorer to make it easy to navigate between projects, folders, and flows.
+- [ ] add ability to add a flow into specific folder or specific project.

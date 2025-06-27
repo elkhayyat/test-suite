@@ -11,7 +11,7 @@ import ReactFlow, {
   Connection,
 } from 'react-flow-renderer';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Paper, Button, TextField, Snackbar, Alert, CircularProgress, Typography, Switch, FormControlLabel } from '@mui/material';
+import { Box, Paper, Button, TextField, Snackbar, Alert, CircularProgress, Typography, Switch, FormControlLabel, IconButton, Collapse, Divider } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
@@ -19,7 +19,10 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import CloudQueueIcon from '@mui/icons-material/CloudQueue';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
-import { TestFlow, TestStep, TestRun, StepResult } from '../../../shared/src/types';
+import TerminalIcon from '@mui/icons-material/Terminal';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import { TestFlow, TestStep, TestRun, StepResult, ConsoleLog } from '../../../shared/src/types';
 import { api } from '../services/api';
 import StepPanel from '../components/StepPanel';
 import StepNode from '../components/StepNode';
@@ -27,6 +30,10 @@ import StepConfigPanel from '../components/StepConfigPanel';
 import EnvironmentSelector from '../components/EnvironmentSelector';
 import { useSocket } from '../hooks/useSocket';
 import ContextMenu from '../components/ContextMenu';
+import InteractiveConsole from '../components/InteractiveConsole';
+import { ConsoleCommandExecutor } from '../services/ConsoleCommandExecutor';
+import OpenAPIImportDialog from '../components/OpenAPIImportDialog';
+import ApiIcon from '@mui/icons-material/Api';
 
 const nodeTypes = {
   testStep: StepNode,
@@ -40,7 +47,20 @@ export default function FlowEditor() {
   const [flowName, setFlowName] = useState('New Flow');
   const [flowDescription, setFlowDescription] = useState('');
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [clipboard, setClipboard] = useState<TestStep | null>(null);
+  const [clipboard, setClipboard] = useState<TestStep | null>(() => {
+    const saved = localStorage.getItem('stepClipboard');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  // Helper function to update clipboard and localStorage
+  const updateClipboard = (step: TestStep | null) => {
+    setClipboard(step);
+    if (step) {
+      localStorage.setItem('stepClipboard', JSON.stringify(step));
+    } else {
+      localStorage.removeItem('stepClipboard');
+    }
+  };
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '' });
   const [selectedEnvironment, setSelectedEnvironment] = useState<string>('');
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(() => {
@@ -56,6 +76,14 @@ export default function FlowEditor() {
   const socket = useSocket();
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
   const [contextMenuNode, setContextMenuNode] = useState<Node | null>(null);
+  const [consoleOpen, setConsoleOpen] = useState(() => {
+    const saved = localStorage.getItem('consoleOpen');
+    return saved === 'true';
+  });
+  const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
+  const [commandExecutor] = useState(() => new ConsoleCommandExecutor());
+  const [environmentVariables, setEnvironmentVariables] = useState<any[]>([]);
+  const [openAPIDialogOpen, setOpenAPIDialogOpen] = useState(false);
 
   useEffect(() => {
     if (id && id !== 'new') {
@@ -117,6 +145,36 @@ export default function FlowEditor() {
     }
   };
 
+  // Load environment variables when environment changes
+  useEffect(() => {
+    const loadEnvironmentVariables = async () => {
+      if (selectedEnvironment) {
+        try {
+          const variables = await api.getEnvironmentVariables(selectedEnvironment);
+          setEnvironmentVariables(variables);
+        } catch (error) {
+          console.error('Failed to load environment variables:', error);
+        }
+      }
+    };
+    
+    loadEnvironmentVariables();
+  }, [selectedEnvironment]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ctrl+S or Cmd+S to save
+      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        event.preventDefault();
+        handleSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [nodes, edges, flowName, flowDescription]); // Dependencies for handleSave
+
   // WebSocket event listeners for real-time test results
   useEffect(() => {
     if (!socket) return;
@@ -125,6 +183,7 @@ export default function FlowEditor() {
       if (run.flowId === id) {
         setCurrentRun(run);
         setStepResults({});
+        setConsoleLogs([]); // Clear console logs for new run
         setSnackbar({ open: true, message: 'Test run started', severity: 'info' });
       }
     });
@@ -179,6 +238,17 @@ export default function FlowEditor() {
             severity: 'success' 
           });
         }
+        
+        // Add step logs to console
+        if (data.result.logs && data.result.logs.length > 0) {
+          setConsoleLogs(prev => [...prev, ...data.result.logs]);
+        }
+      }
+    });
+
+    socket.on('console:log', (data: { runId: string; stepId: string; log: ConsoleLog }) => {
+      if (currentRun?.id === data.runId) {
+        setConsoleLogs(prev => [...prev, data.log]);
       }
     });
 
@@ -186,6 +256,7 @@ export default function FlowEditor() {
       socket.off('run:started');
       socket.off('run:updated');
       socket.off('step:updated');
+      socket.off('console:log');
     };
   }, [socket, id, currentRun]);
 
@@ -226,7 +297,7 @@ export default function FlowEditor() {
 
       // Copy (Cmd/Ctrl + C)
       if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedNode) {
-        setClipboard(selectedNode.data as TestStep);
+        updateClipboard(selectedNode.data as TestStep);
         setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
       }
 
@@ -543,6 +614,28 @@ export default function FlowEditor() {
     event.target.value = '';
   };
 
+  const handleOpenAPIImport = (importedSteps: TestStep[]) => {
+    // Create nodes from imported steps
+    const newNodes: Node[] = importedSteps.map((step, index) => ({
+      id: step.id,
+      type: 'testStep',
+      position: { 
+        x: 250 + (index % 3) * 300, 
+        y: 250 + Math.floor(index / 3) * 150 
+      },
+      data: step,
+    }));
+
+    // Add to existing nodes
+    setNodes(prevNodes => [...prevNodes, ...newNodes]);
+    
+    setSnackbar({ 
+      open: true, 
+      message: `Imported ${importedSteps.length} operations from OpenAPI schema`, 
+      severity: 'success' 
+    });
+  };
+
   const handleRunFlow = async () => {
     try {
       // Save the flow first if it's been modified
@@ -567,7 +660,7 @@ export default function FlowEditor() {
 
   const handleContextMenuCopy = () => {
     if (contextMenuNode) {
-      setClipboard(contextMenuNode.data as TestStep);
+      updateClipboard(contextMenuNode.data as TestStep);
       setSnackbar({ open: true, message: `Copied "${contextMenuNode.data.name}"`, severity: 'success' });
     }
   };
@@ -661,6 +754,35 @@ export default function FlowEditor() {
         severity: 'error' 
       });
     }
+  };
+
+  const toggleConsole = () => {
+    const newState = !consoleOpen;
+    setConsoleOpen(newState);
+    localStorage.setItem('consoleOpen', String(newState));
+  };
+
+  const clearConsole = () => {
+    setConsoleLogs([]);
+  };
+
+  const handleConsoleCommand = (command: string) => {
+    // Special handling for clear command
+    if (command.toLowerCase().trim() === 'clear') {
+      clearConsole();
+      return;
+    }
+
+    // Update command executor context
+    commandExecutor.updateContext({
+      environmentVariables,
+      stepResults,
+      currentStep: selectedNode?.id
+    });
+
+    // Execute command and add logs
+    const commandLogs = commandExecutor.executeCommand(command);
+    setConsoleLogs(prev => [...prev, ...commandLogs]);
   };
 
   return (
@@ -763,6 +885,21 @@ export default function FlowEditor() {
               Import
             </Button>
           </label>
+          <Button
+            variant="outlined"
+            startIcon={<ApiIcon />}
+            onClick={() => setOpenAPIDialogOpen(true)}
+            sx={{
+              borderColor: '#9c27b0',
+              color: '#9c27b0',
+              '&:hover': {
+                borderColor: '#7b1fa2',
+                backgroundColor: 'rgba(156, 39, 176, 0.08)',
+              }
+            }}
+          >
+            Import OpenAPI
+          </Button>
           <Box sx={{ borderLeft: 1, borderColor: 'divider', pl: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
             <EnvironmentSelector 
               value={selectedEnvironment}
@@ -789,7 +926,7 @@ export default function FlowEditor() {
         </Box>
       </Paper>
 
-      <Box sx={{ display: 'flex', flex: 1 }}>
+      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <StepPanel onAddStep={handleAddStep} />
         
         <Box sx={{ flex: 1 }}>
@@ -821,14 +958,68 @@ export default function FlowEditor() {
         </Box>
 
         {selectedNode && (
-          <Box sx={{ width: 350, p: 2, borderLeft: 1, borderColor: 'divider', overflow: 'auto' }}>
+          <Box sx={{ 
+            width: 350, 
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            borderLeft: 1, 
+            borderColor: 'divider' 
+          }}>
             <StepConfigPanel
               step={selectedNode.data}
               onUpdate={(updatedStep) => handleUpdateNode(selectedNode.id, updatedStep)}
               onClose={() => setSelectedNode(null)}
+              availableSteps={nodes.map(node => node.data)}
             />
           </Box>
         )}
+      </Box>
+      
+      {/* Console Panel */}
+      <Box>
+        <Divider />
+        <Box 
+          sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            px: 2,
+            py: 0.5,
+            backgroundColor: 'background.paper',
+            cursor: 'pointer'
+          }}
+          onClick={toggleConsole}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TerminalIcon fontSize="small" />
+            <Typography variant="body2">Console</Typography>
+            {consoleLogs.length > 0 && (
+              <Typography variant="caption" color="text.secondary">
+                ({consoleLogs.length} logs)
+              </Typography>
+            )}
+          </Box>
+          <IconButton size="small">
+            {consoleOpen ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+          </IconButton>
+        </Box>
+        <Collapse in={consoleOpen}>
+          <Box sx={{ height: 300 }}>
+            <InteractiveConsole 
+              logs={consoleLogs}
+              onClear={clearConsole}
+              onCommand={handleConsoleCommand}
+              maxHeight={300}
+              autoScroll={true}
+              context={{
+                environmentVariables,
+                stepResults,
+                selectedNode
+              }}
+            />
+          </Box>
+        </Collapse>
       </Box>
       
       <Snackbar
@@ -855,6 +1046,12 @@ export default function FlowEditor() {
         onDelete={handleContextMenuDelete}
         onRun={handleContextMenuRun}
         canPaste={clipboard !== null}
+      />
+      
+      <OpenAPIImportDialog
+        open={openAPIDialogOpen}
+        onClose={() => setOpenAPIDialogOpen(false)}
+        onImport={handleOpenAPIImport}
       />
     </Box>
   );

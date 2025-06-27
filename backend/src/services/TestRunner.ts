@@ -9,15 +9,20 @@ import { TestRun, TestFlow, TestStep, StepResult, SubflowStepConfig } from '../.
 import { FlowStore } from './FlowStore';
 import { EnvironmentStore } from './EnvironmentStoreMongo';
 import { VariableInterpolator } from './VariableInterpolator';
+import { EnhancedInterpolator } from './EnhancedInterpolator';
+import { ConsoleLogger } from './ConsoleLogger';
+import { processRandomGenerators, processRandomInJSON } from '../utils/randomGenerators';
 
 export class TestRunner {
   private runs: Map<string, TestRun> = new Map();
   private browser: Browser | null = null;
   private activeRuns: Set<string> = new Set();
   private environmentStore: EnvironmentStore;
+  private consoleLogger: ConsoleLogger;
 
   constructor(private io: Server, private flowStore: FlowStore, environmentStore: EnvironmentStore) {
     this.environmentStore = environmentStore;
+    this.consoleLogger = new ConsoleLogger(io);
   }
 
   getAllRuns(): TestRun[] {
@@ -73,11 +78,23 @@ export class TestRunner {
   }
 
   private async executeFlow(runId: string, flow: TestFlow, environmentId: string, selectedSteps?: string[]) {
-    // Load environment variables
-    console.log('Loading environment variables for environment:', environmentId);
-    const variables = await this.environmentStore.getEnvironmentVariables(environmentId);
-    console.log(`Loaded ${variables.length} environment variables`);
-    const interpolator = new VariableInterpolator(variables);
+    // Set flow execution timeout (default 5 seconds)
+    const flowTimeout = 5000;
+    const flowTimeoutId = setTimeout(() => {
+      console.error(`Flow execution timeout after ${flowTimeout}ms`);
+      this.updateRunStatus(runId, 'failed');
+      this.activeRuns.delete(runId);
+    }, flowTimeout);
+
+    try {
+      // Load environment variables
+      console.log('Loading environment variables for environment:', environmentId);
+      const variables = await this.environmentStore.getEnvironmentVariables(environmentId);
+      console.log(`Loaded ${variables.length} environment variables`);
+      
+      // Use enhanced interpolator that supports both {{var}} and $stepId.path syntax
+      const interpolator = new EnhancedInterpolator(variables);
+      const completedResults: StepResult[] = [];
     
     let executionOrder = this.calculateExecutionOrder(flow);
     
@@ -97,6 +114,9 @@ export class TestRunner {
         const step = flow.steps.find(s => s.id === stepId);
         if (!step) continue;
 
+        // Update interpolator with completed step results
+        interpolator.updateStepResults(completedResults);
+        
         // Interpolate variables in step config
         const interpolatedStep = {
           ...step,
@@ -111,10 +131,13 @@ export class TestRunner {
           page = await this.browser.newPage();
         }
 
-        const result = await this.executeStep(interpolatedStep, page, environmentId);
+        const result = await this.executeStep(interpolatedStep, page, environmentId, runId);
 
         this.addStepResult(runId, result);
         this.io.emit('step:updated', { runId, stepId: result.stepId, result });
+        
+        // Add to completed results for future interpolation
+        completedResults.push(result);
 
         if (result.status === 'failed') {
           this.updateRunStatus(runId, 'failed');
@@ -133,6 +156,13 @@ export class TestRunner {
         await page.close();
       }
       this.activeRuns.delete(runId);
+    }
+    } catch (error) {
+      console.error('Flow execution error:', error);
+      this.updateRunStatus(runId, 'failed');
+    } finally {
+      // Clear the flow timeout
+      clearTimeout(flowTimeoutId);
     }
   }
 
@@ -194,12 +224,17 @@ export class TestRunner {
     return order;
   }
 
-  private async executeStep(step: TestStep, page: Page | null, environmentId?: string): Promise<StepResult> {
+  private async executeStep(step: TestStep, page: Page | null, environmentId?: string, runId?: string): Promise<StepResult> {
     const result: StepResult = {
       stepId: step.id,
       status: 'running',
       startTime: new Date(),
     };
+
+    // Start console capture if runId is provided
+    if (runId) {
+      this.consoleLogger.startCapture(runId, step.id);
+    }
 
     try {
       switch (step.type) {
@@ -222,7 +257,7 @@ export class TestRunner {
           result.output = await this.executeSqlStep(step);
           break;
         case 'subflow':
-          result.output = await this.executeSubflowStep(step, environmentId || 'default');
+          result.output = await this.executeSubflowStep(step, environmentId || 'default', runId);
           break;
       }
       
@@ -230,6 +265,12 @@ export class TestRunner {
     } catch (error) {
       result.status = 'failed';
       result.error = (error as Error).message;
+    } finally {
+      // Stop console capture and get logs
+      if (runId) {
+        this.consoleLogger.stopCapture();
+        result.logs = this.consoleLogger.getStepLogs(runId, step.id);
+      }
     }
 
     result.endTime = new Date();
@@ -244,9 +285,20 @@ export class TestRunner {
       throw new Error('URL is required and must be a string');
     }
     
+    // Process random values in URL
+    const processedUrl = processRandomGenerators(config.url);
+    
+    // Process random values in headers
+    const processedHeaders = config.headers ? processRandomInJSON(config.headers) : {};
+    
+    // Get retry configuration
+    const maxRetries = config.retries || 0;
+    const retryDelay = config.retryDelay || 1000;
+    let lastError: Error | null = null;
+    
     // Validate URL format and test DNS resolution
     try {
-      const parsedUrl = new URL(config.url);
+      const parsedUrl = new URL(processedUrl);
       console.log(`Parsed URL - Protocol: ${parsedUrl.protocol}, Host: ${parsedUrl.hostname}, Port: ${parsedUrl.port || 'default'}`);
       
       // Test DNS resolution
@@ -258,20 +310,28 @@ export class TestRunner {
         console.log(`DNS lookup failed for ${parsedUrl.hostname}:`, dnsError);
       }
     } catch (error) {
-      throw new Error(`Invalid URL format: ${config.url}`);
+      throw new Error(`Invalid URL format: ${processedUrl}`);
     }
     
-    console.log(`Making HTTP ${config.method || 'GET'} request to: ${config.url}`);
-    console.log(`Request headers:`, config.headers || {});
+    console.log(`Making HTTP ${config.method || 'GET'} request to: ${processedUrl}`);
+    console.log(`Request headers:`, processedHeaders);
     console.log(`Request body:`, config.body || 'none');
+    console.log(`Retries configured:`, maxRetries);
     
-    // Use a more reasonable default timeout - 60 seconds for HTTP requests
-    const defaultTimeout = 60000;
-    // Ensure minimum timeout of 10 seconds, even if step config specifies less
-    const actualTimeout = Math.max(config.timeout || defaultTimeout, 10000);
+    // Use default timeout of 1 second for HTTP requests
+    const defaultTimeout = 1000;
+    // Use configured timeout or default, no minimum enforced
+    const actualTimeout = config.timeout || defaultTimeout;
     console.log(`Request timeout:`, actualTimeout, `(configured: ${config.timeout || 'default'})`);
     
-    try {
+    // Retry loop
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        console.log(`Retry attempt ${attempt} of ${maxRetries} after ${retryDelay}ms delay`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+      
+      try {
       // Create a more permissive HTTPS agent
       const httpsAgent = new https.Agent({
         rejectUnauthorized: false, // Allow self-signed certificates
@@ -279,11 +339,30 @@ export class TestRunner {
         family: 4, // Force IPv4 to avoid IPv6 issues
       });
 
+      // Process body - first process random values, then parse if JSON
+      let processedBody = config.body;
+      if (typeof config.body === 'string' && config.body.trim()) {
+        // First process random values in the string
+        const bodyWithRandom = processRandomGenerators(config.body);
+        try {
+          // Try to parse as JSON
+          processedBody = JSON.parse(bodyWithRandom);
+          console.log('Parsed body from string to JSON:', processedBody);
+        } catch (e) {
+          // Keep as string if not valid JSON
+          processedBody = bodyWithRandom;
+          console.log('Body is not valid JSON, keeping as string');
+        }
+      } else if (config.body && typeof config.body === 'object') {
+        // Process random values in JSON object
+        processedBody = processRandomInJSON(config.body);
+      }
+
       const requestConfig = {
         method: config.method || 'GET',
-        url: config.url,
-        headers: config.headers || {},
-        data: config.body,
+        url: processedUrl,
+        headers: processedHeaders,
+        data: processedBody,
         timeout: actualTimeout,
         validateStatus: config.validateStatus || (() => true),
         httpsAgent: httpsAgent,
@@ -309,33 +388,41 @@ export class TestRunner {
         data: response.data,
       };
     } catch (error) {
-      console.error('Axios error details:', error);
+      console.error(`Attempt ${attempt + 1} failed:`, error);
       
       if (axios.isAxiosError(error)) {
         console.error('Axios error response:', error.response?.data);
         console.error('Axios error status:', error.response?.status);
         console.error('Axios error headers:', error.response?.headers);
-        console.error('Axios error config:', error.config);
         console.error('Axios error code:', error.code);
         console.error('Axios error message:', error.message);
         
-        // Provide more specific error messages
+        // Store the error for potential retry
         if (error.code === 'ENOTFOUND') {
-          throw new Error(`DNS lookup failed for ${config.url}. Check if the domain exists and is accessible.`);
+          lastError = new Error(`DNS lookup failed for ${config.url}. Check if the domain exists and is accessible.`);
         } else if (error.code === 'ECONNREFUSED') {
-          throw new Error(`Connection refused to ${config.url}. Server may be down, not accepting connections, or blocked. Check server status and network connectivity.`);
+          lastError = new Error(`Connection refused to ${config.url}. Server may be down, not accepting connections, or blocked. Check server status and network connectivity.`);
         } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
-          throw new Error(`Request timed out after ${actualTimeout}ms for ${config.url}. Consider increasing the timeout or check if the server is responding slowly.`);
+          lastError = new Error(`Request timed out after ${actualTimeout}ms for ${config.url}. Consider increasing the timeout or check if the server is responding slowly.`);
         } else if (error.response) {
-          throw new Error(`HTTP ${error.response.status}: ${error.response.statusText} - ${JSON.stringify(error.response.data)}`);
+          lastError = new Error(`HTTP ${error.response.status}: ${error.response.statusText} - ${JSON.stringify(error.response.data)}`);
         } else {
-          throw new Error(`Network error: ${error.message}`);
+          lastError = new Error(`Network error: ${error.message}`);
         }
       } else {
         console.error('Non-axios error:', error);
-        throw new Error(`Request failed: ${error.message || 'Unknown error'}`);
+        lastError = new Error(`Request failed: ${(error as Error).message || 'Unknown error'}`);
+      }
+      
+      // If this is the last attempt, throw the error
+      if (attempt === maxRetries) {
+        throw lastError;
       }
     }
+    } // End of retry loop
+    
+    // This should never be reached, but just in case
+    throw lastError || new Error('Request failed after all retry attempts');
   }
 
   private async executeBrowserStep(step: TestStep, page: Page | null): Promise<any> {
@@ -445,7 +532,7 @@ export class TestRunner {
     // }
   }
 
-  private async executeSubflowStep(step: TestStep, environmentId: string): Promise<any> {
+  private async executeSubflowStep(step: TestStep, environmentId: string, runId?: string): Promise<any> {
     const config = step.config as SubflowStepConfig;
     
     // Validate config
@@ -495,7 +582,7 @@ export class TestRunner {
           page = await this.browser.newPage();
         }
 
-        const stepResult = await this.executeStep(interpolatedStep, page, subflowEnvironmentId);
+        const stepResult = await this.executeStep(interpolatedStep, page, subflowEnvironmentId, runId);
         subResults.push(stepResult);
 
         // Emit sub-flow step update

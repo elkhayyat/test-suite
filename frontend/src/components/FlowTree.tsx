@@ -96,6 +96,20 @@ export default function FlowTree({
     setDraggedItem(dragItem);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', JSON.stringify(dragItem));
+    
+    // Add visual feedback
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '0.5';
+    }
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    // Reset visual feedback
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '1';
+    }
+    setDraggedItem(null);
+    setDragOverTarget({ type: null });
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -117,9 +131,31 @@ export default function FlowTree({
 
   const handleDrop = (e: React.DragEvent, targetType: 'project' | 'folder', targetId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOverTarget({ type: null });
 
-    if (!draggedItem) return;
+    if (!draggedItem) {
+      // Try to get drag data from dataTransfer if draggedItem is not set
+      try {
+        const data = e.dataTransfer.getData('text/plain');
+        if (data) {
+          const parsedData = JSON.parse(data) as DragItem;
+          if (parsedData.type === 'flow') {
+            if (targetType === 'project') {
+              onFlowMove(parsedData.flowId, targetId, undefined);
+            } else if (targetType === 'folder') {
+              const folder = Object.values(folders).flat().find(f => f.id === targetId);
+              if (folder) {
+                onFlowMove(parsedData.flowId, folder.projectId, targetId);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to parse drag data:', error);
+      }
+      return;
+    }
 
     if (targetType === 'project') {
       onFlowMove(draggedItem.flowId, targetId, undefined);
@@ -150,6 +186,7 @@ export default function FlowTree({
       key={flow.id}
       draggable
       onDragStart={(e) => handleDragStart(e, flow)}
+      onDragEnd={handleDragEnd}
       sx={{
         display: 'flex',
         alignItems: 'center',

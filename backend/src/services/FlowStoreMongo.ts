@@ -111,6 +111,13 @@ export class FlowStore {
     try {
       const collections = this.mongodb.getCollections();
       
+      // First check if the flow exists
+      const existingFlow = await collections.flows.findOne({ id });
+      if (!existingFlow) {
+        console.error(`Flow with id ${id} not found`);
+        return undefined;
+      }
+      
       const updatedFlow = {
         ...data,
         updatedAt: new Date(),
@@ -119,11 +126,17 @@ export class FlowStore {
       // Remove id from update data to avoid overwriting it
       delete updatedFlow.id;
       
+      console.log(`Updating flow ${id} with data:`, updatedFlow);
+      
       const result = await collections.flows.findOneAndUpdate(
         { id },
         { $set: updatedFlow },
         { returnDocument: 'after' }
       );
+      
+      if (!result) {
+        console.error(`Failed to update flow ${id} - no result returned`);
+      }
       
       return result || undefined;
     } catch (error) {

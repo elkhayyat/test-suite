@@ -104,6 +104,11 @@ export const api = {
     return response.data;
   },
 
+  async duplicateEnvironment(environmentId: string): Promise<Environment> {
+    const response = await apiClient.post(`/environments/${environmentId}/duplicate`);
+    return response.data;
+  },
+
   // Projects
   async getProjects(): Promise<Project[]> {
     const response = await apiClient.get('/projects');

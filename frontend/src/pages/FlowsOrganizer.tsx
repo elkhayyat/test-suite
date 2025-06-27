@@ -15,6 +15,7 @@ import { api } from '../services/api';
 import EnvironmentSelector from '../components/EnvironmentSelector';
 import FlowTree from '../components/FlowTree';
 import Dashboard from './Dashboard';
+import RunResultsDialog from '../components/RunResultsDialog';
 
 export default function FlowsOrganizer() {
   const navigate = useNavigate();
@@ -23,6 +24,9 @@ export default function FlowsOrganizer() {
   const [folders, setFolders] = useState<{ [projectId: string]: Folder[] }>({});
   const [selectedEnvironment, setSelectedEnvironment] = useState<string>('');
   const [viewMode, setViewMode] = useState<'tree' | 'grid'>('tree');
+  const [runResultsOpen, setRunResultsOpen] = useState(false);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [currentFlowName, setCurrentFlowName] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -55,17 +59,23 @@ export default function FlowsOrganizer() {
       const flow = flows.find(f => f.id === flowId);
       if (!flow) return;
 
+      // Don't do anything if the flow is already in the target location
+      if (flow.projectId === newProjectId && flow.folderId === newFolderId) {
+        return;
+      }
+
       // Update the flow with new project/folder
+      // Only send the fields that need to be updated
       await api.updateFlow(flowId, {
-        ...flow,
         projectId: newProjectId,
         folderId: newFolderId,
       });
 
       // Reload flows to reflect the change
-      loadData();
+      await loadData();
     } catch (error) {
       console.error('Failed to move flow:', error);
+      alert('Failed to move flow. Please try again.');
     }
   };
 
@@ -97,8 +107,12 @@ export default function FlowsOrganizer() {
 
   const handleRunFlow = async (flowId: string) => {
     try {
-      await api.startRun(flowId, selectedEnvironment);
-      navigate('/runs');
+      const flow = flows.find(f => f.id === flowId);
+      const flowName = flow?.name || 'Unknown Flow';
+      const { runId } = await api.startRun(flowId, selectedEnvironment);
+      setCurrentRunId(runId);
+      setCurrentFlowName(flowName);
+      setRunResultsOpen(true);
     } catch (error) {
       console.error('Failed to start run:', error);
     }
@@ -178,6 +192,17 @@ export default function FlowsOrganizer() {
       >
         <AddIcon />
       </Fab>
+
+      <RunResultsDialog
+        open={runResultsOpen}
+        onClose={() => {
+          setRunResultsOpen(false);
+          setCurrentRunId(null);
+          setCurrentFlowName('');
+        }}
+        runId={currentRunId}
+        flowName={currentFlowName}
+      />
     </Box>
   );
 }

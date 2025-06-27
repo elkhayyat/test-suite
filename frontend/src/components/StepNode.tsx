@@ -43,9 +43,15 @@ export default function StepNode({ data }: StepNodeProps) {
   React.useEffect(() => {
     if (data.result?.status === 'failed') {
       setExpanded(true);
-      // The error tab will be added dynamically, so we'll set activeTab in the render
+      // Find error tab index and switch to it
+      const hasError = data.result?.error;
+      if (hasError) {
+        // Error tab will be at index 2 if output exists, otherwise at index 1
+        const errorTabIndex = data.result?.output ? 2 : 1;
+        setActiveTab(errorTabIndex);
+      }
     }
-  }, [data.result]);
+  }, [data.result?.status, data.result?.error]);
 
   const getIcon = () => {
     switch (data.type) {
@@ -150,13 +156,20 @@ export default function StepNode({ data }: StepNodeProps) {
         };
       case 'running':
         return {
-          backgroundColor: `rgba(33, 150, 243, ${alpha})`,
+          backgroundColor: `rgba(33, 150, 243, ${alpha * 2})`, // More prominent background
           borderColor: 'primary.main',
-          animation: 'pulse 2s infinite',
-          '@keyframes pulse': {
-            '0%': { boxShadow: '0 0 0 0 rgba(33, 150, 243, 0.7)' },
-            '70%': { boxShadow: '0 0 0 10px rgba(33, 150, 243, 0)' },
-            '100%': { boxShadow: '0 0 0 0 rgba(33, 150, 243, 0)' }
+          borderWidth: 2,
+          animation: 'pulse-border 1.5s infinite',
+          '@keyframes pulse-border': {
+            '0%': { 
+              boxShadow: '0 0 0 0 rgba(33, 150, 243, 0.7), inset 0 0 0 0 rgba(33, 150, 243, 0.2)' 
+            },
+            '70%': { 
+              boxShadow: '0 0 0 10px rgba(33, 150, 243, 0), inset 0 0 0 3px rgba(33, 150, 243, 0)' 
+            },
+            '100%': { 
+              boxShadow: '0 0 0 0 rgba(33, 150, 243, 0), inset 0 0 0 0 rgba(33, 150, 243, 0)' 
+            }
           }
         };
       case 'skipped':
@@ -202,18 +215,47 @@ export default function StepNode({ data }: StepNodeProps) {
       
       {/* Status Progress Bar */}
       {data.result?.status === 'running' && (
-        <LinearProgress 
-          sx={{ 
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 3,
-            '& .MuiLinearProgress-bar': {
-              backgroundColor: 'primary.main',
-            }
-          }} 
-        />
+        <>
+          <LinearProgress 
+            sx={{ 
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 4,
+              '& .MuiLinearProgress-bar': {
+                backgroundColor: 'primary.main',
+              }
+            }} 
+          />
+          {/* Animated border effect */}
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              pointerEvents: 'none',
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderRadius: 'inherit',
+                background: 'linear-gradient(45deg, transparent 30%, rgba(33, 150, 243, 0.1) 50%, transparent 70%)',
+                backgroundSize: '200% 200%',
+                animation: 'shimmer 2s linear infinite',
+                '@keyframes shimmer': {
+                  '0%': { backgroundPosition: '200% 200%' },
+                  '100%': { backgroundPosition: '-200% -200%' }
+                }
+              }
+            }}
+          />
+        </>
       )}
       
       {/* Status Banner for Failed/Passed */}
@@ -242,24 +284,37 @@ export default function StepNode({ data }: StepNodeProps) {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 {getStatusIcon()}
                 <Chip 
-                  label={data.result.status.toUpperCase()} 
+                  label={data.result.status === 'running' ? 'RUNNING' : data.result.status.toUpperCase()} 
                   size="small" 
                   color={getStatusColor() as any}
-                  variant={data.result.status === 'running' ? 'outlined' : 'filled'}
+                  variant={data.result.status === 'running' ? 'filled' : 'filled'}
                   sx={{ 
                     height: 20, 
                     fontSize: '0.65rem',
                     fontWeight: 'bold',
                     letterSpacing: '0.5px',
                     ...(data.result.status === 'running' && {
-                      animation: 'blink 1.5s infinite',
-                      '@keyframes blink': {
-                        '0%, 50%': { opacity: 1 },
-                        '51%, 100%': { opacity: 0.7 }
+                      backgroundColor: 'primary.main',
+                      color: 'white',
+                      animation: 'pulse-chip 1.5s ease-in-out infinite',
+                      '@keyframes pulse-chip': {
+                        '0%': { 
+                          transform: 'scale(1)',
+                          boxShadow: '0 0 0 0 rgba(33, 150, 243, 0.7)'
+                        },
+                        '70%': { 
+                          transform: 'scale(1.05)',
+                          boxShadow: '0 0 0 10px rgba(33, 150, 243, 0)'
+                        },
+                        '100%': { 
+                          transform: 'scale(1)',
+                          boxShadow: '0 0 0 0 rgba(33, 150, 243, 0)'
+                        }
                       }
                     })
                   }}
-                  icon={data.result.status === 'running' ? <PlayArrowIcon sx={{ fontSize: 12 }} /> : 
+                  icon={data.result.status === 'running' ? 
+                        <CircularProgress size={10} thickness={5} sx={{ color: 'white' }} /> : 
                         data.result.status === 'passed' ? <CheckCircleIcon sx={{ fontSize: 12 }} /> :
                         data.result.status === 'failed' ? <ErrorIcon sx={{ fontSize: 12 }} /> :
                         data.result.status === 'skipped' ? <PauseIcon sx={{ fontSize: 12 }} /> : undefined}
@@ -447,14 +502,8 @@ export default function StepNode({ data }: StepNodeProps) {
               });
             }
 
-            // Auto-select error tab when step fails
-            let validActiveTab = Math.min(activeTab, tabs.length - 1);
-            if (data.result.status === 'failed' && data.result.error) {
-              const errorTabIndex = tabs.findIndex(tab => tab.label === 'Error');
-              if (errorTabIndex !== -1) {
-                validActiveTab = errorTabIndex;
-              }
-            }
+            // Ensure activeTab is within valid range
+            const validActiveTab = Math.min(activeTab, tabs.length - 1);
 
             return (
               <Box sx={{ mt: 1, bgcolor: 'background.default', borderRadius: 1 }}>

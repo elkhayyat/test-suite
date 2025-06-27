@@ -30,6 +30,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { Environment } from '../../../shared/src/types';
 import { api } from '../services/api';
 import VariablesDialog from '../components/VariablesDialog';
@@ -167,6 +168,17 @@ export default function Environments() {
     setImportingEnvId('');
   };
 
+  const handleDuplicateEnvironment = async (envId: string) => {
+    try {
+      const duplicatedEnv = await api.duplicateEnvironment(envId);
+      loadEnvironments();
+      alert(`Environment "${duplicatedEnv.name}" duplicated successfully!`);
+    } catch (error) {
+      console.error('Failed to duplicate environment:', error);
+      alert('Failed to duplicate environment');
+    }
+  };
+
   return (
     <Box className="animate-fadeIn">
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -290,6 +302,20 @@ export default function Environments() {
                     }}
                   >
                     <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleDuplicateEnvironment(env.id)}
+                    title="Duplicate Environment"
+                    sx={{
+                      color: '#9b59b6',
+                      '&:hover': {
+                        backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                        transform: 'scale(1.1)'
+                      }
+                    }}
+                  >
+                    <ContentCopyIcon />
                   </IconButton>
                   <IconButton
                     size="small"

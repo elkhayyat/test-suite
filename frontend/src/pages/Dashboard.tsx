@@ -21,11 +21,15 @@ import { useNavigate } from 'react-router-dom';
 import { TestFlow } from '../../../shared/src/types';
 import { api } from '../services/api';
 import EnvironmentSelector from '../components/EnvironmentSelector';
+import RunResultsDialog from '../components/RunResultsDialog';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [flows, setFlows] = useState<TestFlow[]>([]);
   const [selectedEnvironment, setSelectedEnvironment] = useState<string>('');
+  const [runResultsOpen, setRunResultsOpen] = useState(false);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [currentFlowName, setCurrentFlowName] = useState<string>('');
 
   useEffect(() => {
     loadFlows();
@@ -40,10 +44,12 @@ export default function Dashboard() {
     }
   };
 
-  const handleRunFlow = async (flowId: string) => {
+  const handleRunFlow = async (flowId: string, flowName: string) => {
     try {
-      await api.startRun(flowId, selectedEnvironment);
-      navigate('/runs');
+      const { runId } = await api.startRun(flowId, selectedEnvironment);
+      setCurrentRunId(runId);
+      setCurrentFlowName(flowName);
+      setRunResultsOpen(true);
     } catch (error) {
       console.error('Failed to start run:', error);
     }
@@ -145,7 +151,7 @@ export default function Dashboard() {
                 <Button 
                   size="small" 
                   startIcon={<PlayArrowIcon />}
-                  onClick={() => handleRunFlow(flow.id)}
+                  onClick={() => handleRunFlow(flow.id, flow.name)}
                   color="primary"
                 >
                   Run
@@ -183,6 +189,17 @@ export default function Dashboard() {
       >
         <AddIcon />
       </Fab>
+
+      <RunResultsDialog
+        open={runResultsOpen}
+        onClose={() => {
+          setRunResultsOpen(false);
+          setCurrentRunId(null);
+          setCurrentFlowName('');
+        }}
+        runId={currentRunId}
+        flowName={currentFlowName}
+      />
     </Box>
   );
 }
