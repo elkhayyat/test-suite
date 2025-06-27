@@ -181,18 +181,9 @@ export default function FlowEditor() {
     if (!socket) return;
 
     socket.on('run:started', (run: TestRun) => {
-      console.log('Received run:started event:', { 
-        runId: run.id, 
-        flowId: run.flowId, 
-        currentPageId: id,
-        matches: run.flowId === id,
-        selectedSteps: run.selectedSteps
-      });
-      
       if (run.flowId === id) {
         setCurrentRun(run);
         currentRunRef.current = run;
-        console.log('Set currentRun to:', run.id);
         
         // Only clear step results and console logs for full flow runs, not single step runs
         if (!run.selectedSteps || run.selectedSteps.length === 0) {
@@ -204,13 +195,6 @@ export default function FlowEditor() {
     });
 
     socket.on('run:updated', (run: TestRun) => {
-      console.log('Received run:updated event:', { 
-        runId: run.id, 
-        status: run.status,
-        resultCount: run.results.length,
-        currentRunId: currentRun?.id
-      });
-      
       if (run.flowId === id && currentRunRef.current?.id === run.id) {
         setCurrentRun(run);
         currentRunRef.current = run;
@@ -244,14 +228,6 @@ export default function FlowEditor() {
     });
 
     socket.on('step:updated', (data: { runId: string; stepId: string; result: StepResult }) => {
-      console.log('Received step:updated event:', { 
-        runId: data.runId, 
-        stepId: data.stepId, 
-        status: data.result.status,
-        currentRunId: currentRunRef.current?.id,
-        matches: currentRunRef.current?.id === data.runId
-      });
-      
       if (currentRunRef.current?.id === data.runId) {
         setStepResults(prev => ({
           ...prev,
@@ -300,6 +276,8 @@ export default function FlowEditor() {
       socket.off('run:updated');
       socket.off('step:updated');
       socket.off('console:log');
+      // Clean up ref to prevent memory leaks
+      currentRunRef.current = null;
     };
   }, [socket, id, currentRun]);
 
@@ -695,14 +673,14 @@ export default function FlowEditor() {
     }
   };
 
-  const handleContextMenuCopy = () => {
+  const handleContextMenuCopy = useCallback(() => {
     if (contextMenuNode) {
       updateClipboard(contextMenuNode.data as TestStep);
       setSnackbar({ open: true, message: `Copied "${contextMenuNode.data.name}"`, severity: 'success' });
     }
-  };
+  }, [contextMenuNode, updateClipboard]);
 
-  const handleContextMenuPaste = () => {
+  const handleContextMenuPaste = useCallback(() => {
     if (clipboard && contextMenuNode) {
       const newNode: Node = {
         id: `${Date.now()}`,
@@ -721,9 +699,9 @@ export default function FlowEditor() {
       setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
       setSaveStatus('unsaved');
     }
-  };
+  }, [clipboard, contextMenuNode, setNodes, setSaveStatus]);
 
-  const handleContextMenuDuplicate = () => {
+  const handleContextMenuDuplicate = useCallback(() => {
     if (contextMenuNode) {
       const newNode: Node = {
         id: `${Date.now()}`,
@@ -742,41 +720,30 @@ export default function FlowEditor() {
       setSnackbar({ open: true, message: `Duplicated "${contextMenuNode.data.name}"`, severity: 'success' });
       setSaveStatus('unsaved');
     }
-  };
+  }, [contextMenuNode, setNodes, setSaveStatus]);
 
-  const handleContextMenuDelete = () => {
+  const handleContextMenuDelete = useCallback(() => {
     if (contextMenuNode) {
       setNodes((nds) => nds.filter((n) => n.id !== contextMenuNode.id));
       setEdges((eds) => eds.filter((e) => e.source !== contextMenuNode.id && e.target !== contextMenuNode.id));
       setSelectedNode(null);
       setSaveStatus('unsaved');
     }
-  };
+  }, [contextMenuNode, setNodes, setEdges, setSaveStatus]);
 
-  const handleContextMenuRun = async () => {
-    console.log('handleContextMenuRun called', { contextMenuNode, id, selectedEnvironment });
-    
+  const handleContextMenuRun = useCallback(async () => {
     if (!contextMenuNode || !id || id === 'new') {
-      console.log('Cannot run step: missing contextMenuNode, id, or id is new');
       setSnackbar({ open: true, message: 'Please save the flow first', severity: 'warning' });
       return;
     }
 
     try {
-      console.log('Saving flow before running step...');
       // Save the flow first if it's been modified
       await handleSave();
-      
-      console.log('Starting step run with:', { 
-        flowId: id, 
-        environmentId: selectedEnvironment, 
-        selectedSteps: [contextMenuNode.data.id] 
-      });
       
       // Run with selected step(s) - backend will handle running only these steps if supported
       const { runId } = await api.startRun(id, selectedEnvironment, [contextMenuNode.data.id]);
       
-      console.log('Step run started successfully:', runId);
       setSnackbar({ 
         open: true, 
         message: `Running step "${contextMenuNode.data.name}" - watch for results!`, 
@@ -791,7 +758,7 @@ export default function FlowEditor() {
         severity: 'error' 
       });
     }
-  };
+  }, [contextMenuNode, id, selectedEnvironment, handleSave]);
 
   const toggleConsole = () => {
     const newState = !consoleOpen;

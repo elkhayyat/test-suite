@@ -36,25 +36,32 @@ export class TestRunner {
   /**
    * Get the most recent step results for a flow (for step reference interpolation)
    */
-  private getLatestStepResults(flowId: string): StepResult[] {
+  private getLatestStepResults(flowId: string, maxRuns = 10): StepResult[] {
     const flowRuns = Array.from(this.runs.values())
       .filter(run => run.flowId === flowId)
-      .sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+      .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
+      .slice(0, maxRuns); // Limit to recent runs to prevent memory bloat
 
     // Get the most recent result for each step
     const latestResults: { [stepId: string]: StepResult } = {};
     
     for (const run of flowRuns) {
       for (const result of run.results) {
-        if (!latestResults[result.stepId] || 
-            (result.endTime && latestResults[result.stepId].endTime && 
-             result.endTime > latestResults[result.stepId].endTime)) {
+        if (this.isMoreRecentResult(result, latestResults[result.stepId])) {
           latestResults[result.stepId] = result;
         }
       }
     }
 
     return Object.values(latestResults);
+  }
+
+  /**
+   * Helper function to determine if a result is more recent than another
+   */
+  private isMoreRecentResult(newResult: StepResult, existingResult?: StepResult): boolean {
+    return !existingResult || 
+      (newResult.endTime && existingResult.endTime && newResult.endTime > existingResult.endTime);
   }
 
   async startRun(flowId: string, environmentId?: string, selectedSteps?: string[]): Promise<string> {
