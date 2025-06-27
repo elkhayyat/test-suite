@@ -8,9 +8,15 @@ Test Flow Suite is a web-based test automation platform with visual flow editing
 
 ## Commands
 
+### Quick Start (Recommended)
+- `make install` - Install all dependencies for the monorepo
+- `make dev` - Start everything with MongoDB (recommended setup)
+- `make dev-sqlite` - Start with SQLite backend (fallback option)
+
 ### Development
 - `npm install` - Install all dependencies for the monorepo
-- `npm run dev` - Start both frontend (port 3000) and backend (port 3001) in development mode
+- `npm run dev` - Start both frontend (port 3000) and backend (port 3001) in development mode (SQLite)
+- `npm run dev:mongo` - Start with MongoDB backend
 - `npm run build` - Build all packages
 
 ### Backend-specific
@@ -21,8 +27,27 @@ Test Flow Suite is a web-based test automation platform with visual flow editing
 
 ### Frontend-specific
 - `cd frontend && npm run dev` - Run frontend dev server
-- `cd frontend && npm run build` - Build production bundle
+- `cd frontend && npm run build` - Build TypeScript and create production bundle
 - `cd frontend && npm run preview` - Preview production build
+
+### Docker & Database
+- `make docker-up` - Start MongoDB with Docker Compose
+- `make docker-down` - Stop MongoDB containers
+- `make docker-logs` - View MongoDB container logs
+
+### Production
+- `make build` - Build all packages
+- `make start` - Start production server (SQLite)
+- `make start-mongo` - Start production server (MongoDB)
+
+### Testing
+- No formal test suite setup currently
+- `frontend/src/utils/curlParser.test.ts` - Manual curl parser tests (browser console)
+
+### Utilities
+- `make stop` - Stop all running development processes
+- `make clean` - Clean build artifacts and node_modules
+- `make status` - Check service status
 
 ## Architecture
 
