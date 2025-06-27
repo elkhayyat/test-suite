@@ -34,6 +34,7 @@ export interface TestRun {
   startTime: Date;
   endTime?: Date;
   results: StepResult[];
+  selectedSteps?: string[];
 }
 
 export interface StepResult {

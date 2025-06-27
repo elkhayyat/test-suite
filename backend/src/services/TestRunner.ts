@@ -33,6 +33,37 @@ export class TestRunner {
     return this.runs.get(id);
   }
 
+  /**
+   * Get the most recent step results for a flow (for step reference interpolation)
+   */
+  private getLatestStepResults(flowId: string, maxRuns = 10): StepResult[] {
+    const flowRuns = Array.from(this.runs.values())
+      .filter(run => run.flowId === flowId)
+      .sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
+      .slice(0, maxRuns); // Limit to recent runs to prevent memory bloat
+
+    // Get the most recent result for each step
+    const latestResults: { [stepId: string]: StepResult } = {};
+    
+    for (const run of flowRuns) {
+      for (const result of run.results) {
+        if (this.isMoreRecentResult(result, latestResults[result.stepId])) {
+          latestResults[result.stepId] = result;
+        }
+      }
+    }
+
+    return Object.values(latestResults);
+  }
+
+  /**
+   * Helper function to determine if a result is more recent than another
+   */
+  private isMoreRecentResult(newResult: StepResult, existingResult?: StepResult): boolean {
+    return !existingResult || 
+      (newResult.endTime && existingResult.endTime && newResult.endTime > existingResult.endTime);
+  }
+
   async startRun(flowId: string, environmentId?: string, selectedSteps?: string[]): Promise<string> {
     const flow = await this.flowStore.getFlow(flowId);
     if (!flow) {
@@ -53,6 +84,7 @@ export class TestRunner {
       status: 'running',
       startTime: new Date(),
       results: [],
+      selectedSteps,
     };
 
     this.runs.set(run.id, run);
@@ -92,8 +124,11 @@ export class TestRunner {
       const variables = await this.environmentStore.getEnvironmentVariables(environmentId);
       console.log(`Loaded ${variables.length} environment variables`);
       
+      // Get existing step results for reference interpolation
+      const existingResults = this.getLatestStepResults(flow.id);
+      
       // Use enhanced interpolator that supports both {{var}} and $stepId.path syntax
-      const interpolator = new EnhancedInterpolator(variables);
+      const interpolator = new EnhancedInterpolator(variables, existingResults);
       const completedResults: StepResult[] = [];
     
     let executionOrder = this.calculateExecutionOrder(flow);
