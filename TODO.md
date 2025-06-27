@@ -85,5 +85,7 @@
 - [x] don't redirect to test runs page, show the result on the same page.
 - [x] add auto complete for step id to assertion fields.
 - [ ] add ability to run a full folder or project flows in the dashboard page.
-- [ ] add project/folders/flows explorer to make it easy to navigate between projects, folders, and flows.
+- [ ] move sidebar navigation items into the header.
+- [ ] add project/folders/flows explorer into the sidebar to make it easy to navigate between projects, folders, and flows.
 - [ ] add ability to add a flow into specific folder or specific project.
+- [ ] add right click menu to the file explorer to enable project, folder, and flow operations like create, delete, duplicate, rename, run, import, export, and more.
