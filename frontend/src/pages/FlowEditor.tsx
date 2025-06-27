@@ -624,17 +624,29 @@ export default function FlowEditor() {
   };
 
   const handleContextMenuRun = async () => {
+    console.log('handleContextMenuRun called', { contextMenuNode, id, selectedEnvironment });
+    
     if (!contextMenuNode || !id || id === 'new') {
+      console.log('Cannot run step: missing contextMenuNode, id, or id is new');
       setSnackbar({ open: true, message: 'Please save the flow first', severity: 'warning' });
       return;
     }
 
     try {
+      console.log('Saving flow before running step...');
       // Save the flow first if it's been modified
       await handleSave();
       
+      console.log('Starting step run with:', { 
+        flowId: id, 
+        environmentId: selectedEnvironment, 
+        selectedSteps: [contextMenuNode.data.id] 
+      });
+      
       // Run with selected step(s) - backend will handle running only these steps if supported
       const { runId } = await api.startRun(id, selectedEnvironment, [contextMenuNode.data.id]);
+      
+      console.log('Step run started successfully:', runId);
       setSnackbar({ 
         open: true, 
         message: `Running step "${contextMenuNode.data.name}" - watch for results!`, 

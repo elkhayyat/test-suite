@@ -46,7 +46,9 @@ export const api = {
   },
 
   async startRun(flowId: string, environmentId?: string, selectedSteps?: string[]): Promise<{ runId: string }> {
+    console.log('API startRun called with:', { flowId, environmentId, selectedSteps });
     const response = await apiClient.post('/runs', { flowId, environmentId, selectedSteps });
+    console.log('API startRun response:', response.data);
     return response.data;
   },
 

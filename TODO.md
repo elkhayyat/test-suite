@@ -24,6 +24,9 @@
 - [x] ability to export and import entire project.
 - [x] ability to export and import entire organization.
 - [x] ability to export and import entire environment.
+- [ ] add ability to enter number of retries for each request, if it fails with the same error return failed.
+- [ ] add ability to import openapi schema and generate requests from it to be added to the project.
+
 
 # Bugs
 - [x] nothing happens when clicking on show test runs.
@@ -47,6 +50,8 @@
 - [x] Nothing happens after clicking submit to create an organization.
 - [x] URL contains unresolved variables: {{baseUrl}}.
 - [x] when trying to run an HTTP request step I got failed, but it did not call the URL.
+- [ ] drag and drop function for moving flows between folders and projects not working.
+- [ ] can't navigate between error and info tabs in step results inside flow page.
 
 # TODOs
 - [x] folders should always be visible under project, even if the project has flows without folders.
@@ -60,3 +65,7 @@
 - [x] add run button to step right click menu to run this step.
 - [x] split the step results into tabs.
 - [x] add ability to run flow into another flow as a step.
+- [ ] set default timeout for requests to 1000ms and for flows to be 5000ms.
+- [x] add visualization for step card that show its status if it is running or failed or passed.
+- [ ] don't expand step results automatically
+- [ ] add ability to vertically scroll through step configuration.

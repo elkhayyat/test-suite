@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Handle, Position } from 'react-flow-renderer';
-import { Box, Paper, Typography, CircularProgress, Chip, Collapse, IconButton, Tabs, Tab } from '@mui/material';
+import { Box, Paper, Typography, CircularProgress, Chip, Collapse, IconButton, Tabs, Tab, LinearProgress, Fade } from '@mui/material';
 import HttpIcon from '@mui/icons-material/Http';
 import WebIcon from '@mui/icons-material/Web';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -11,6 +11,10 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import StorageIcon from '@mui/icons-material/Storage';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PauseIcon from '@mui/icons-material/Pause';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { TestStep, StepResult } from '../../../shared/src/types';
 
 interface StepNodeData extends TestStep {
@@ -25,6 +29,15 @@ interface StepNodeProps {
 export default function StepNode({ data }: StepNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // Could add a toast notification here if needed
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
 
   // Auto-expand when step fails and switch to error tab
   React.useEffect(() => {
@@ -113,11 +126,57 @@ export default function StepNode({ data }: StepNodeProps) {
     return `${(duration / 1000).toFixed(2)}s`;
   };
 
+  const getStatusBackground = () => {
+    // Always return a solid background, never transparent
+    const alpha = 0.15; // Increased alpha for better visibility
+    
+    if (!data.result) {
+      // Default background for steps without results
+      return {
+        backgroundColor: 'background.paper', // Use theme background
+      };
+    }
+    
+    switch (data.result.status) {
+      case 'passed':
+        return {
+          backgroundColor: `rgba(76, 175, 80, ${alpha})`,
+          borderColor: 'success.main',
+        };
+      case 'failed':
+        return {
+          backgroundColor: `rgba(244, 67, 54, ${alpha})`,
+          borderColor: 'error.main',
+        };
+      case 'running':
+        return {
+          backgroundColor: `rgba(33, 150, 243, ${alpha})`,
+          borderColor: 'primary.main',
+          animation: 'pulse 2s infinite',
+          '@keyframes pulse': {
+            '0%': { boxShadow: '0 0 0 0 rgba(33, 150, 243, 0.7)' },
+            '70%': { boxShadow: '0 0 0 10px rgba(33, 150, 243, 0)' },
+            '100%': { boxShadow: '0 0 0 0 rgba(33, 150, 243, 0)' }
+          }
+        };
+      case 'skipped':
+        return {
+          backgroundColor: `rgba(255, 152, 0, ${alpha})`,
+          borderColor: 'warning.main',
+        };
+      default:
+        // Fallback to solid background
+        return {
+          backgroundColor: 'background.paper',
+        };
+    }
+  };
+
   return (
     <Paper 
       className="animate-scaleIn"
       sx={{ 
-        p: 2, 
+        p: 0,
         minWidth: 250,
         cursor: 'move',
         transition: 'all 0.3s ease',
@@ -125,8 +184,12 @@ export default function StepNode({ data }: StepNodeProps) {
         borderColor: data.result ? 
           (data.result.status === 'passed' ? 'success.main' : 
            data.result.status === 'failed' ? 'error.main' :
-           data.result.status === 'running' ? 'primary.main' : 'warning.main') 
+           data.result.status === 'running' ? 'primary.main' : 
+           data.result.status === 'skipped' ? 'warning.main' : 'divider') 
           : 'divider',
+        position: 'relative',
+        overflow: 'hidden',
+        ...getStatusBackground(),
         '&:hover': {
           transform: 'scale(1.05)',
           boxShadow: (theme) => theme.palette.mode === 'dark' 
@@ -136,21 +199,81 @@ export default function StepNode({ data }: StepNodeProps) {
       }}
     >
       <Handle type="target" position={Position.Top} />
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+      
+      {/* Status Progress Bar */}
+      {data.result?.status === 'running' && (
+        <LinearProgress 
+          sx={{ 
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 3,
+            '& .MuiLinearProgress-bar': {
+              backgroundColor: 'primary.main',
+            }
+          }} 
+        />
+      )}
+      
+      {/* Status Banner for Failed/Passed */}
+      {data.result && data.result.status !== 'running' && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 3,
+            backgroundColor: data.result.status === 'passed' ? 'success.main' : 
+                           data.result.status === 'failed' ? 'error.main' : 
+                           data.result.status === 'skipped' ? 'warning.main' : 'transparent'
+          }}
+        />
+      )}
+      
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, p: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
             ID: {data.id.substring(0, 8)}
           </Typography>
           {data.result && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              {getStatusIcon()}
-              <Chip 
-                label={data.result.status} 
-                size="small" 
-                color={getStatusColor() as any}
-                sx={{ height: 20, fontSize: '0.7rem' }}
-              />
-            </Box>
+            <Fade in={true}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                {getStatusIcon()}
+                <Chip 
+                  label={data.result.status.toUpperCase()} 
+                  size="small" 
+                  color={getStatusColor() as any}
+                  variant={data.result.status === 'running' ? 'outlined' : 'filled'}
+                  sx={{ 
+                    height: 20, 
+                    fontSize: '0.65rem',
+                    fontWeight: 'bold',
+                    letterSpacing: '0.5px',
+                    ...(data.result.status === 'running' && {
+                      animation: 'blink 1.5s infinite',
+                      '@keyframes blink': {
+                        '0%, 50%': { opacity: 1 },
+                        '51%, 100%': { opacity: 0.7 }
+                      }
+                    })
+                  }}
+                  icon={data.result.status === 'running' ? <PlayArrowIcon sx={{ fontSize: 12 }} /> : 
+                        data.result.status === 'passed' ? <CheckCircleIcon sx={{ fontSize: 12 }} /> :
+                        data.result.status === 'failed' ? <ErrorIcon sx={{ fontSize: 12 }} /> :
+                        data.result.status === 'skipped' ? <PauseIcon sx={{ fontSize: 12 }} /> : undefined}
+                />
+                {data.result.startTime && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                    <AccessTimeIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                      {formatDuration(data.result.startTime, data.result.endTime)}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </Fade>
           )}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -163,14 +286,47 @@ export default function StepNode({ data }: StepNodeProps) {
               alignItems: 'center',
               justifyContent: 'center',
               transition: 'transform 0.3s ease',
+              position: 'relative',
+              ...(data.result?.status === 'running' && {
+                animation: 'spin 2s linear infinite',
+                '@keyframes spin': {
+                  '0%': { transform: 'rotate(0deg)' },
+                  '100%': { transform: 'rotate(360deg)' }
+                }
+              }),
               '.MuiPaper-root:hover &': {
-                transform: 'rotate(360deg) scale(1.1)',
+                transform: data.result?.status === 'running' ? 'rotate(0deg) scale(1.1)' : 'rotate(360deg) scale(1.1)',
               }
             }}
           >
             <Box sx={{ color: 'white', display: 'flex' }}>
               {getIcon()}
             </Box>
+            
+            {/* Status Overlay */}
+            {data.result && data.result.status !== 'running' && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: -2,
+                  right: -2,
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  backgroundColor: data.result.status === 'passed' ? 'success.main' : 
+                                 data.result.status === 'failed' ? 'error.main' : 
+                                 data.result.status === 'skipped' ? 'warning.main' : 'transparent',
+                  border: '1px solid white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                {data.result.status === 'passed' && <CheckCircleIcon sx={{ fontSize: 8, color: 'white' }} />}
+                {data.result.status === 'failed' && <ErrorIcon sx={{ fontSize: 8, color: 'white' }} />}
+                {data.result.status === 'skipped' && <PauseIcon sx={{ fontSize: 8, color: 'white' }} />}
+              </Box>
+            )}
           </Box>
           <Typography variant="body2" sx={{ flex: 1 }}>{data.name}</Typography>
           {data.result && (data.result.output || data.result.error || data.result.status === 'passed') && (
@@ -273,9 +429,19 @@ export default function StepNode({ data }: StepNodeProps) {
                 label: 'Error',
                 content: (
                   <Box>
-                    <Typography variant="body2" color="error">
-                      {data.result!.error}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                      <Typography variant="body2" color="error" sx={{ flex: 1, fontFamily: 'monospace' }}>
+                        {data.result!.error}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => copyToClipboard(data.result!.error!)}
+                        title="Copy error message"
+                        sx={{ mt: -0.5 }}
+                      >
+                        <ContentCopyIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
                   </Box>
                 )
               });

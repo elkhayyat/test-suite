@@ -1,6 +1,9 @@
 import { Server } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
+import https from 'https';
+import dns from 'dns';
+import { promisify } from 'util';
 import { chromium, Browser, Page } from 'playwright';
 import { TestRun, TestFlow, TestStep, StepResult, SubflowStepConfig } from '../../../shared/src/types';
 import { FlowStore } from './FlowStore';
@@ -241,31 +244,98 @@ export class TestRunner {
       throw new Error('URL is required and must be a string');
     }
     
-    // Validate URL format
+    // Validate URL format and test DNS resolution
     try {
-      new URL(config.url);
+      const parsedUrl = new URL(config.url);
+      console.log(`Parsed URL - Protocol: ${parsedUrl.protocol}, Host: ${parsedUrl.hostname}, Port: ${parsedUrl.port || 'default'}`);
+      
+      // Test DNS resolution
+      const lookup = promisify(dns.lookup);
+      try {
+        const dnsResult = await lookup(parsedUrl.hostname, { family: 4 }); // IPv4 only
+        console.log(`DNS lookup result for ${parsedUrl.hostname}:`, dnsResult);
+      } catch (dnsError) {
+        console.log(`DNS lookup failed for ${parsedUrl.hostname}:`, dnsError);
+      }
     } catch (error) {
       throw new Error(`Invalid URL format: ${config.url}`);
     }
     
     console.log(`Making HTTP ${config.method || 'GET'} request to: ${config.url}`);
+    console.log(`Request headers:`, config.headers || {});
+    console.log(`Request body:`, config.body || 'none');
     
-    const response = await axios({
-      method: config.method || 'GET',
-      url: config.url,
-      headers: config.headers || {},
-      data: config.body,
-      timeout: config.timeout || 30000,
-      validateStatus: config.validateStatus || (() => true),
-    });
+    // Use a more reasonable default timeout - 60 seconds for HTTP requests
+    const defaultTimeout = 60000;
+    // Ensure minimum timeout of 10 seconds, even if step config specifies less
+    const actualTimeout = Math.max(config.timeout || defaultTimeout, 10000);
+    console.log(`Request timeout:`, actualTimeout, `(configured: ${config.timeout || 'default'})`);
+    
+    try {
+      // Create a more permissive HTTPS agent
+      const httpsAgent = new https.Agent({
+        rejectUnauthorized: false, // Allow self-signed certificates
+        keepAlive: true,
+        family: 4, // Force IPv4 to avoid IPv6 issues
+      });
 
-    console.log(`HTTP request completed with status: ${response.status}`);
+      const requestConfig = {
+        method: config.method || 'GET',
+        url: config.url,
+        headers: config.headers || {},
+        data: config.body,
+        timeout: actualTimeout,
+        validateStatus: config.validateStatus || (() => true),
+        httpsAgent: httpsAgent,
+        // Add additional debugging options
+        maxRedirects: 5,
+        insecureHTTPParser: true,
+      };
+      
+      console.log('Full axios request config:', JSON.stringify({
+        ...requestConfig,
+        httpsAgent: 'HTTPS Agent configured'
+      }, null, 2));
+      
+      const response = await axios(requestConfig);
 
-    return {
-      status: response.status,
-      headers: response.headers,
-      data: response.data,
-    };
+      console.log(`HTTP request completed with status: ${response.status}`);
+      console.log(`Response headers:`, response.headers);
+      console.log(`Response data (first 500 chars):`, JSON.stringify(response.data).substring(0, 500));
+
+      return {
+        status: response.status,
+        headers: response.headers,
+        data: response.data,
+      };
+    } catch (error) {
+      console.error('Axios error details:', error);
+      
+      if (axios.isAxiosError(error)) {
+        console.error('Axios error response:', error.response?.data);
+        console.error('Axios error status:', error.response?.status);
+        console.error('Axios error headers:', error.response?.headers);
+        console.error('Axios error config:', error.config);
+        console.error('Axios error code:', error.code);
+        console.error('Axios error message:', error.message);
+        
+        // Provide more specific error messages
+        if (error.code === 'ENOTFOUND') {
+          throw new Error(`DNS lookup failed for ${config.url}. Check if the domain exists and is accessible.`);
+        } else if (error.code === 'ECONNREFUSED') {
+          throw new Error(`Connection refused to ${config.url}. Server may be down, not accepting connections, or blocked. Check server status and network connectivity.`);
+        } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+          throw new Error(`Request timed out after ${actualTimeout}ms for ${config.url}. Consider increasing the timeout or check if the server is responding slowly.`);
+        } else if (error.response) {
+          throw new Error(`HTTP ${error.response.status}: ${error.response.statusText} - ${JSON.stringify(error.response.data)}`);
+        } else {
+          throw new Error(`Network error: ${error.message}`);
+        }
+      } else {
+        console.error('Non-axios error:', error);
+        throw new Error(`Request failed: ${error.message || 'Unknown error'}`);
+      }
+    }
   }
 
   private async executeBrowserStep(step: TestStep, page: Page | null): Promise<any> {

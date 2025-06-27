@@ -27,6 +27,7 @@ import SpeedIcon from '@mui/icons-material/Speed';
 import HttpIcon from '@mui/icons-material/Http';
 import WebIcon from '@mui/icons-material/Web';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ErrorIcon from '@mui/icons-material/Error';
 import TimerIcon from '@mui/icons-material/Timer';
 import CodeIcon from '@mui/icons-material/Code';
@@ -46,6 +47,15 @@ export default function TestRunDetails() {
   const [expandedSteps, setExpandedSteps] = useState<{ [stepId: string]: boolean }>({});
   const [stepActiveTabs, setStepActiveTabs] = useState<{ [stepId: string]: number }>({});
   const [loading, setLoading] = useState(true);
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // Could add a toast notification here if needed
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
 
   useEffect(() => {
     if (runId) {
@@ -430,7 +440,18 @@ export default function TestRunDetails() {
                             tabs.push({
                               label: 'Error',
                               content: (
-                                <Alert severity="error">
+                                <Alert severity="error" 
+                                  action={
+                                    <IconButton
+                                      color="inherit"
+                                      size="small"
+                                      onClick={() => copyToClipboard(result.error!)}
+                                      title="Copy error message"
+                                    >
+                                      <ContentCopyIcon fontSize="small" />
+                                    </IconButton>
+                                  }
+                                >
                                   <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                                     {result.error}
                                   </Typography>

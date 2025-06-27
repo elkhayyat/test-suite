@@ -19,14 +19,20 @@ export const runRoutes = (testRunner: TestRunner) => {
 
   router.post('/', async (req, res) => {
     const { flowId, environmentId, selectedSteps } = req.body;
+    console.log('POST /runs called with:', { flowId, environmentId, selectedSteps });
+    
     if (!flowId) {
+      console.log('Missing flowId in request');
       return res.status(400).json({ error: 'flowId is required' });
     }
     
     try {
+      console.log('Starting test run...');
       const runId = await testRunner.startRun(flowId, environmentId, selectedSteps);
+      console.log('Test run started successfully:', runId);
       res.status(201).json({ runId });
     } catch (error) {
+      console.error('Failed to start test run:', error);
       res.status(400).json({ error: (error as Error).message });
     }
   });
