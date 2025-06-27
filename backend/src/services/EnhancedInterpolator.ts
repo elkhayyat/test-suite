@@ -25,10 +25,10 @@ export class EnhancedInterpolator {
   }
 
   /**
-   * Updates step results for interpolation
+   * Updates step results for interpolation (merges with existing results)
    */
   updateStepResults(stepResults: StepResult[]): void {
-    this.stepResults.clear();
+    // Merge new results with existing ones (new results take precedence)
     stepResults.forEach(result => {
       this.stepResults.set(result.stepId, result);
     });

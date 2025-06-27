@@ -72,6 +72,7 @@ export default function FlowEditor() {
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
   const [currentRun, setCurrentRun] = useState<TestRun | null>(null);
+  const currentRunRef = useRef<TestRun | null>(null);
   const [stepResults, setStepResults] = useState<{ [stepId: string]: StepResult }>({});
   const socket = useSocket();
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
@@ -180,24 +181,58 @@ export default function FlowEditor() {
     if (!socket) return;
 
     socket.on('run:started', (run: TestRun) => {
+      console.log('Received run:started event:', { 
+        runId: run.id, 
+        flowId: run.flowId, 
+        currentPageId: id,
+        matches: run.flowId === id,
+        selectedSteps: run.selectedSteps
+      });
+      
       if (run.flowId === id) {
         setCurrentRun(run);
-        setStepResults({});
-        setConsoleLogs([]); // Clear console logs for new run
+        currentRunRef.current = run;
+        console.log('Set currentRun to:', run.id);
+        
+        // Only clear step results and console logs for full flow runs, not single step runs
+        if (!run.selectedSteps || run.selectedSteps.length === 0) {
+          setStepResults({});
+          setConsoleLogs([]); // Clear console logs for new full flow run
+        }
         setSnackbar({ open: true, message: 'Test run started', severity: 'info' });
       }
     });
 
     socket.on('run:updated', (run: TestRun) => {
-      if (run.flowId === id && currentRun?.id === run.id) {
+      console.log('Received run:updated event:', { 
+        runId: run.id, 
+        status: run.status,
+        resultCount: run.results.length,
+        currentRunId: currentRun?.id
+      });
+      
+      if (run.flowId === id && currentRunRef.current?.id === run.id) {
         setCurrentRun(run);
+        currentRunRef.current = run;
         
-        // Update step results
-        const results: { [stepId: string]: StepResult } = {};
-        run.results.forEach(result => {
-          results[result.stepId] = result;
-        });
-        setStepResults(results);
+        // Update step results - merge with existing results for single step runs
+        if (run.selectedSteps && run.selectedSteps.length > 0) {
+          // Single step run - merge new results with existing ones
+          setStepResults(prev => {
+            const updated = { ...prev };
+            run.results.forEach(result => {
+              updated[result.stepId] = result;
+            });
+            return updated;
+          });
+        } else {
+          // Full flow run - replace all results
+          const results: { [stepId: string]: StepResult } = {};
+          run.results.forEach(result => {
+            results[result.stepId] = result;
+          });
+          setStepResults(results);
+        }
         
         // Show completion message
         if (run.status === 'completed') {
@@ -209,7 +244,15 @@ export default function FlowEditor() {
     });
 
     socket.on('step:updated', (data: { runId: string; stepId: string; result: StepResult }) => {
-      if (currentRun?.id === data.runId) {
+      console.log('Received step:updated event:', { 
+        runId: data.runId, 
+        stepId: data.stepId, 
+        status: data.result.status,
+        currentRunId: currentRunRef.current?.id,
+        matches: currentRunRef.current?.id === data.runId
+      });
+      
+      if (currentRunRef.current?.id === data.runId) {
         setStepResults(prev => ({
           ...prev,
           [data.stepId]: data.result
@@ -247,7 +290,7 @@ export default function FlowEditor() {
     });
 
     socket.on('console:log', (data: { runId: string; stepId: string; log: ConsoleLog }) => {
-      if (currentRun?.id === data.runId) {
+      if (currentRunRef.current?.id === data.runId) {
         setConsoleLogs(prev => [...prev, data.log]);
       }
     });
@@ -271,18 +314,12 @@ export default function FlowEditor() {
             data: {
               ...node.data,
               result: stepResult,
-              isRunning: currentRun?.status === 'running'
+              isRunning: currentRunRef.current?.status === 'running'
             }
           };
         }
-        // Clear result if no current run or result
-        if (!currentRun || currentRun.status === 'completed' || currentRun.status === 'failed') {
-          const { result, isRunning, ...dataWithoutResult } = node.data;
-          return {
-            ...node,
-            data: dataWithoutResult
-          };
-        }
+        // Keep existing results visible after run completion (don't clear them)
+        // Results are only cleared when starting a new full flow run
         return node;
       })
     );
@@ -936,7 +973,7 @@ export default function FlowEditor() {
               data: {
                 ...node.data,
                 result: stepResults[node.data.id],
-                isRunning: currentRun?.status === 'running' && stepResults[node.data.id]?.status === 'running'
+                isRunning: currentRunRef.current?.status === 'running' && stepResults[node.data.id]?.status === 'running'
               }
             }))}
             edges={edges}
