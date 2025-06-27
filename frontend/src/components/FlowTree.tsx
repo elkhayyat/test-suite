@@ -13,11 +13,11 @@ import {
   ChevronRight as ChevronRightIcon,
   Folder as FolderIcon,
   Description as FlowIcon,
-  MoreVert as MoreVertIcon,
   PlayArrow as PlayArrowIcon,
-  Edit as EditIcon,
   Delete as DeleteIcon,
   ContentCopy as ContentCopyIcon,
+  Add as AddIcon,
+  PlaylistPlay as PlaylistPlayIcon,
 } from '@mui/icons-material';
 import { TestFlow, Project, Folder } from '../../../shared/src/types';
 import { useNavigate } from 'react-router-dom';
@@ -30,6 +30,10 @@ interface FlowTreeProps {
   onFlowDelete: (flowId: string, flowName: string) => void;
   onFlowDuplicate: (flow: TestFlow) => void;
   onFlowRun: (flowId: string) => void;
+  onFolderCreateFlow: (folderId: string, projectId: string) => void;
+  onFolderRunAllFlows: (folderId: string) => void;
+  onFolderDuplicate: (folder: Folder) => void;
+  onFolderDelete: (folderId: string, folderName: string, projectId: string) => void;
 }
 
 interface DragItem {
@@ -47,11 +51,16 @@ export default function FlowTree({
   onFlowDelete,
   onFlowDuplicate,
   onFlowRun,
+  onFolderCreateFlow,
+  onFolderRunAllFlows,
+  onFolderDuplicate,
+  onFolderDelete,
 }: FlowTreeProps) {
   const navigate = useNavigate();
   const [expandedProjects, setExpandedProjects] = useState<{ [projectId: string]: boolean }>({});
   const [expandedFolders, setExpandedFolders] = useState<{ [folderId: string]: boolean }>({});
   const [anchorEl, setAnchorEl] = useState<{ [flowId: string]: HTMLElement | null }>({});
+  const [folderAnchorEl, setFolderAnchorEl] = useState<{ [folderId: string]: HTMLElement | null }>({});
   const [draggedItem, setDraggedItem] = useState<DragItem | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<{ type: 'project' | 'folder' | null; id?: string }>({ type: null });
 
@@ -78,12 +87,24 @@ export default function FlowTree({
     }));
   };
 
-  const handleMenuOpen = (event: React.MouseEvent<HTMLButtonElement>, flowId: string) => {
-    setAnchorEl(prev => ({ ...prev, [flowId]: event.currentTarget }));
+  const handleMenuOpen = (event: React.MouseEvent, flowId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAnchorEl(prev => ({ ...prev, [flowId]: event.currentTarget as HTMLElement }));
   };
 
   const handleMenuClose = (flowId: string) => {
     setAnchorEl(prev => ({ ...prev, [flowId]: null }));
+  };
+
+  const handleFolderMenuOpen = (event: React.MouseEvent, folderId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setFolderAnchorEl(prev => ({ ...prev, [folderId]: event.currentTarget as HTMLElement }));
+  };
+
+  const handleFolderMenuClose = (folderId: string) => {
+    setFolderAnchorEl(prev => ({ ...prev, [folderId]: null }));
   };
 
   const handleDragStart = (e: React.DragEvent, flow: TestFlow) => {
@@ -187,13 +208,15 @@ export default function FlowTree({
       draggable
       onDragStart={(e) => handleDragStart(e, flow)}
       onDragEnd={handleDragEnd}
+      onContextMenu={(e) => handleMenuOpen(e, flow.id)}
+      onClick={() => navigate(`/flows/${flow.id}`)}
       sx={{
         display: 'flex',
         alignItems: 'center',
         gap: 1,
         p: 1,
         pl: 4,
-        cursor: 'move',
+        cursor: 'pointer',
         '&:hover': {
           backgroundColor: 'action.hover',
         },
@@ -203,32 +226,18 @@ export default function FlowTree({
       <Typography variant="body2" sx={{ flex: 1 }}>
         {flow.name}
       </Typography>
-      <IconButton
-        size="small"
-        onClick={() => navigate(`/flows/${flow.id}`)}
-        sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}
-      >
-        <EditIcon fontSize="small" />
-      </IconButton>
-      <IconButton
-        size="small"
-        onClick={() => onFlowRun(flow.id)}
-        sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}
-      >
-        <PlayArrowIcon fontSize="small" />
-      </IconButton>
-      <IconButton
-        size="small"
-        onClick={(e) => handleMenuOpen(e, flow.id)}
-        sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}
-      >
-        <MoreVertIcon fontSize="small" />
-      </IconButton>
       <Menu
         anchorEl={anchorEl[flow.id]}
         open={Boolean(anchorEl[flow.id])}
         onClose={() => handleMenuClose(flow.id)}
       >
+        <MenuItem onClick={() => {
+          onFlowRun(flow.id);
+          handleMenuClose(flow.id);
+        }}>
+          <PlayArrowIcon fontSize="small" sx={{ mr: 1 }} />
+          Run Flow
+        </MenuItem>
         <MenuItem onClick={() => {
           onFlowDuplicate(flow);
           handleMenuClose(flow.id);
@@ -259,6 +268,7 @@ export default function FlowTree({
           onDragEnter={(e) => handleDragEnter(e, 'folder', folder.id)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, 'folder', folder.id)}
+          onContextMenu={(e) => handleFolderMenuOpen(e, folder.id)}
           sx={{
             display: 'flex',
             alignItems: 'center',
@@ -284,6 +294,48 @@ export default function FlowTree({
             {folderFlows.length} flows
           </Typography>
         </Box>
+        <Menu
+          anchorEl={folderAnchorEl[folder.id]}
+          open={Boolean(folderAnchorEl[folder.id])}
+          onClose={() => handleFolderMenuClose(folder.id)}
+        >
+          <MenuItem onClick={() => {
+            const projectFolder = Object.entries(folders).find(([_, folderList]) => 
+              folderList.some(f => f.id === folder.id)
+            );
+            const projectId = projectFolder ? projectFolder[0] : '';
+            onFolderCreateFlow(folder.id, projectId);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <AddIcon fontSize="small" sx={{ mr: 1 }} />
+            Create Flow
+          </MenuItem>
+          <MenuItem onClick={() => {
+            onFolderRunAllFlows(folder.id);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <PlaylistPlayIcon fontSize="small" sx={{ mr: 1 }} />
+            Run All Flows
+          </MenuItem>
+          <MenuItem onClick={() => {
+            onFolderDuplicate(folder);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <ContentCopyIcon fontSize="small" sx={{ mr: 1 }} />
+            Duplicate
+          </MenuItem>
+          <MenuItem onClick={() => {
+            const projectFolder = Object.entries(folders).find(([_, folderList]) => 
+              folderList.some(f => f.id === folder.id)
+            );
+            const projectId = projectFolder ? projectFolder[0] : '';
+            onFolderDelete(folder.id, folder.name, projectId);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+            Delete
+          </MenuItem>
+        </Menu>
         <Collapse in={isExpanded}>
           <Box sx={{ pl: 2 }}>
             {folderFlows.map(renderFlow)}

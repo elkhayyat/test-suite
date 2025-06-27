@@ -10,7 +10,7 @@ import ReactFlow, {
   useEdgesState,
   Connection,
 } from 'react-flow-renderer';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, Paper, Button, TextField, Snackbar, Alert, CircularProgress, Typography, Switch, FormControlLabel, IconButton, Collapse, Divider } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -42,6 +42,7 @@ const nodeTypes = {
 export default function FlowEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [flowName, setFlowName] = useState('New Flow');
@@ -178,10 +179,25 @@ export default function FlowEditor() {
 
   // WebSocket event listeners for real-time test results
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      console.log('Socket not available yet');
+      return;
+    }
+
+    console.log('Setting up socket event listeners');
+
+    socket.on('connect', () => {
+      console.log('Socket connected successfully');
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+    });
 
     socket.on('run:started', (run: TestRun) => {
+      console.log('Received run:started event:', run);
       if (run.flowId === id) {
+        console.log('Run started for current flow:', run);
         setCurrentRun(run);
         currentRunRef.current = run;
         
@@ -195,26 +211,34 @@ export default function FlowEditor() {
     });
 
     socket.on('run:updated', (run: TestRun) => {
+      console.log('Received run:updated event:', run);
       if (run.flowId === id && currentRunRef.current?.id === run.id) {
+        console.log('Updating run for current flow:', run);
         setCurrentRun(run);
         currentRunRef.current = run;
         
         // Update step results - merge with existing results for single step runs
         if (run.selectedSteps && run.selectedSteps.length > 0) {
+          console.log('Single step run - merging results');
           // Single step run - merge new results with existing ones
           setStepResults(prev => {
             const updated = { ...prev };
             run.results.forEach(result => {
+              console.log('Adding step result:', result);
               updated[result.stepId] = result;
             });
+            console.log('Updated step results:', updated);
             return updated;
           });
         } else {
+          console.log('Full flow run - replacing all results');
           // Full flow run - replace all results
           const results: { [stepId: string]: StepResult } = {};
           run.results.forEach(result => {
+            console.log('Adding step result:', result);
             results[result.stepId] = result;
           });
+          console.log('Updated step results:', results);
           setStepResults(results);
         }
         
@@ -228,11 +252,19 @@ export default function FlowEditor() {
     });
 
     socket.on('step:updated', (data: { runId: string; stepId: string; result: StepResult }) => {
+      console.log('Received step:updated event:', data);
+      console.log('Current run ref:', currentRunRef.current);
+      console.log('Run ID comparison:', currentRunRef.current?.id, '===', data.runId, '?', currentRunRef.current?.id === data.runId);
       if (currentRunRef.current?.id === data.runId) {
-        setStepResults(prev => ({
-          ...prev,
-          [data.stepId]: data.result
-        }));
+        console.log('Updating step result for current run:', data);
+        setStepResults(prev => {
+          const updated = {
+            ...prev,
+            [data.stepId]: data.result
+          };
+          console.log('Updated step results from step:updated:', updated);
+          return updated;
+        });
         
         // Show notification for step completion/failure
         if (data.result.status === 'failed') {
@@ -279,14 +311,16 @@ export default function FlowEditor() {
       // Clean up ref to prevent memory leaks
       currentRunRef.current = null;
     };
-  }, [socket, id, currentRun]);
+  }, [socket, id]);
 
   // Update nodes with step results
   useEffect(() => {
+    console.log('Updating nodes with step results:', stepResults);
     setNodes((nds) =>
       nds.map((node) => {
         const stepResult = stepResults[node.data.id];
         if (stepResult) {
+          console.log(`Updating node ${node.data.id} with result:`, stepResult);
           return {
             ...node,
             data: {
@@ -298,7 +332,15 @@ export default function FlowEditor() {
         }
         // Keep existing results visible after run completion (don't clear them)
         // Results are only cleared when starting a new full flow run
-        return node;
+        // Preserve the existing result and just update isRunning status
+        console.log(`Preserving existing result for node ${node.data.id}:`, node.data.result);
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            isRunning: currentRunRef.current?.status === 'running'
+          }
+        };
       })
     );
   }, [stepResults, currentRun, setNodes]);
@@ -517,9 +559,15 @@ export default function FlowEditor() {
   };
 
   const handleSave = async (isAutoSave = false) => {
+    // Get folder and project context from URL params for new flows
+    const folderId = searchParams.get('folderId');
+    const projectId = searchParams.get('projectId');
+    
     const flow: Partial<TestFlow> = {
       name: flowName,
       description: flowDescription,
+      ...(projectId && { projectId }),
+      ...(folderId && { folderId }),
       steps: nodes.map((node) => ({
         ...node.data,
         position: node.position,
@@ -790,7 +838,11 @@ export default function FlowEditor() {
   };
 
   return (
-    <Box sx={{ height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column' }}>
+    <Box sx={{ 
+      height: 'calc(100vh - 64px)', 
+      display: 'flex', 
+      flexDirection: 'column'
+    }}>
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <TextField
@@ -930,7 +982,12 @@ export default function FlowEditor() {
         </Box>
       </Paper>
 
-      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <Box sx={{ 
+        display: 'flex', 
+        flex: 1, 
+        overflow: 'hidden',
+        minHeight: 0 // Important for flex children to shrink properly
+      }}>
         <StepPanel onAddStep={handleAddStep} />
         
         <Box sx={{ flex: 1 }}>
@@ -964,7 +1021,7 @@ export default function FlowEditor() {
         {selectedNode && (
           <Box sx={{ 
             width: 350, 
-            height: '100%',
+            height: '100%', // Full height within the already constrained parent
             display: 'flex',
             flexDirection: 'column',
             borderLeft: 1, 
@@ -981,8 +1038,12 @@ export default function FlowEditor() {
       </Box>
       
       {/* Console Panel */}
-      <Box>
-        <Divider />
+      <Box sx={{
+        flexShrink: 0, // Prevent console from shrinking
+        backgroundColor: 'background.paper',
+        borderTop: 1,
+        borderColor: 'divider'
+      }}>
         <Box 
           sx={{ 
             display: 'flex', 
@@ -991,7 +1052,9 @@ export default function FlowEditor() {
             px: 2,
             py: 0.5,
             backgroundColor: 'background.paper',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            borderBottom: consoleOpen ? 1 : 0,
+            borderColor: 'divider'
           }}
           onClick={toggleConsole}
         >

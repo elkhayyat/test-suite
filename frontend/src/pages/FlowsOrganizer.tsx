@@ -171,6 +171,10 @@ export default function FlowsOrganizer() {
         onFlowDelete={handleDeleteFlow}
         onFlowDuplicate={handleDuplicateFlow}
         onFlowRun={handleRunFlow}
+        onFolderCreateFlow={(folderId, projectId) => navigate(`/flows/new?folderId=${folderId}&projectId=${projectId}`)}
+        onFolderRunAllFlows={(folderId) => console.log('Run all flows in folder:', folderId)}
+        onFolderDuplicate={(folder) => console.log('Duplicate folder:', folder)}
+        onFolderDelete={(folderId, folderName, projectId) => console.log('Delete folder:', folderId, folderName, projectId)}
       />
 
       <Fab

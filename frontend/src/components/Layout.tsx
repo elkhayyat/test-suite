@@ -1,16 +1,18 @@
-import React, { useContext } from 'react';
-import { AppBar, Toolbar, Typography, Drawer, List, ListItem, ListItemIcon, ListItemText, Box, IconButton } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import React, { useContext, useState, useEffect } from 'react';
+import { AppBar, Toolbar, Typography, Drawer, Box, IconButton, Tabs, Tab } from '@mui/material';
+import { useNavigate, useLocation } from 'react-router-dom';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SettingsIcon from '@mui/icons-material/Settings';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
-import ScienceIcon from '@mui/icons-material/Science';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import BusinessIcon from '@mui/icons-material/Business';
 import { styled, useTheme } from '@mui/material/styles';
 import { ColorModeContext } from '../App';
+import FlowTree from './FlowTree';
+import { TestFlow, Project, Folder } from '../../../shared/src/types';
+import { api } from '../services/api';
 
 const drawerWidth = 240;
 
@@ -32,8 +34,12 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useTheme();
   const colorMode = useContext(ColorModeContext);
+  const [flows, setFlows] = useState<TestFlow[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [folders, setFolders] = useState<{ [projectId: string]: Folder[] }>({});
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
@@ -42,6 +48,182 @@ export default function Layout({ children }: LayoutProps) {
     { text: 'Environments', icon: <SettingsIcon />, path: '/environments' },
     { text: 'Organizations', icon: <BusinessIcon />, path: '/organizations' },
   ];
+
+  // Load data for the explorer
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [flowsData, projectsData] = await Promise.all([
+          api.getFlows(),
+          api.getProjects()
+        ]);
+        setFlows(flowsData || []);
+        setProjects(projectsData || []);
+        
+        // Load folders for each project
+        const foldersMap: { [projectId: string]: Folder[] } = {};
+        for (const project of projectsData || []) {
+          try {
+            const projectFolders = await api.getProjectFolders(project.id);
+            foldersMap[project.id] = projectFolders || [];
+          } catch (error) {
+            console.error(`Failed to load folders for project ${project.id}:`, error);
+            foldersMap[project.id] = [];
+          }
+        }
+        setFolders(foldersMap);
+      } catch (error) {
+        console.error('Failed to load data for explorer:', error);
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleFlowMove = async (flowId: string, newProjectId?: string, newFolderId?: string) => {
+    try {
+      await api.updateFlow(flowId, { projectId: newProjectId, folderId: newFolderId });
+      // Reload flows to reflect changes
+      const flowsData = await api.getFlows();
+      setFlows(flowsData || []);
+    } catch (error) {
+      console.error('Failed to move flow:', error);
+    }
+  };
+
+  const handleFlowDelete = async (flowId: string, flowName: string) => {
+    if (window.confirm(`Are you sure you want to delete the flow "${flowName}"?`)) {
+      try {
+        await api.deleteFlow(flowId);
+        setFlows(prev => prev.filter(f => f.id !== flowId));
+      } catch (error) {
+        console.error('Failed to delete flow:', error);
+      }
+    }
+  };
+
+  const handleFlowDuplicate = async (flow: TestFlow) => {
+    try {
+      const duplicatedFlow = { ...flow, name: `${flow.name} (Copy)`, id: '' };
+      await api.createFlow(duplicatedFlow);
+      // Reload flows to reflect changes
+      const flowsData = await api.getFlows();
+      setFlows(flowsData || []);
+    } catch (error) {
+      console.error('Failed to duplicate flow:', error);
+    }
+  };
+
+  const handleFlowRun = async (flowId: string) => {
+    try {
+      const { runId } = await api.startRun(flowId);
+      // Navigate to the run details page to show real-time results
+      navigate(`/runs/${runId}`);
+    } catch (error) {
+      console.error('Failed to start run:', error);
+    }
+  };
+
+  const handleFolderCreateFlow = (folderId: string, projectId: string) => {
+    // Navigate to flow editor in create mode with folder and project context
+    navigate(`/flows/new?folderId=${folderId}&projectId=${projectId}`);
+  };
+
+  const handleFolderRunAllFlows = async (folderId: string) => {
+    try {
+      const folderFlows = flows.filter(flow => flow.folderId === folderId);
+      
+      if (folderFlows.length === 0) {
+        alert('No flows in this folder to run');
+        return;
+      }
+
+      // Run all flows in the folder sequentially
+      for (const flow of folderFlows) {
+        try {
+          const { runId } = await api.startRun(flow.id);
+          console.log(`Started flow ${flow.name} with run ID: ${runId}`);
+        } catch (error) {
+          console.error(`Failed to start flow ${flow.name}:`, error);
+        }
+      }
+      
+      alert(`Started ${folderFlows.length} flows from the folder`);
+    } catch (error) {
+      console.error('Failed to run folder flows:', error);
+    }
+  };
+
+  const handleFolderDuplicate = async (folder: any) => {
+    try {
+      // Find the project this folder belongs to
+      const projectEntry = Object.entries(folders).find(([_, folderList]) => 
+        folderList.some((f: any) => f.id === folder.id)
+      );
+      
+      if (!projectEntry) {
+        console.error('Could not find project for folder');
+        return;
+      }
+      
+      const projectId = projectEntry[0];
+      
+      // Create a duplicate folder
+      const duplicatedFolder = {
+        ...folder,
+        name: `${folder.name} (Copy)`,
+        id: undefined // Let the backend generate a new ID
+      };
+      
+      await api.createFolder(projectId, duplicatedFolder);
+      
+      // Reload folders to reflect changes
+      const updatedFolders: { [projectId: string]: any[] } = {};
+      for (const project of projects) {
+        try {
+          const projectFolders = await api.getProjectFolders(project.id);
+          updatedFolders[project.id] = projectFolders || [];
+        } catch (error) {
+          console.error(`Failed to load folders for project ${project.id}:`, error);
+          updatedFolders[project.id] = [];
+        }
+      }
+      setFolders(updatedFolders);
+    } catch (error) {
+      console.error('Failed to duplicate folder:', error);
+    }
+  };
+
+  const handleFolderDelete = async (folderId: string, folderName: string, projectId: string) => {
+    if (window.confirm(`Are you sure you want to delete the folder "${folderName}"? This will also delete all flows in this folder.`)) {
+      try {
+        await api.deleteFolder(projectId, folderId);
+        
+        // Remove flows that were in this folder
+        setFlows(prev => prev.filter(f => f.folderId !== folderId));
+        
+        // Reload folders to reflect changes
+        const updatedFolders: { [projectId: string]: any[] } = {};
+        for (const project of projects) {
+          try {
+            const projectFolders = await api.getProjectFolders(project.id);
+            updatedFolders[project.id] = projectFolders || [];
+          } catch (error) {
+            console.error(`Failed to load folders for project ${project.id}:`, error);
+            updatedFolders[project.id] = [];
+          }
+        }
+        setFolders(updatedFolders);
+      } catch (error) {
+        console.error('Failed to delete folder:', error);
+      }
+    }
+  };
+
+  // Get current tab value based on location
+  const getCurrentTab = () => {
+    const currentItem = menuItems.find(item => item.path === location.pathname);
+    return currentItem ? menuItems.indexOf(currentItem) : 0;
+  };
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -57,22 +239,65 @@ export default function Layout({ children }: LayoutProps) {
         }}
       >
         <Toolbar>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexGrow: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <AccountTreeIcon sx={{ 
               fontSize: 28,
               color: 'white',
               filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))',
               animation: 'pulse 3s ease-in-out infinite'
             }} />
-            <Typography variant="h6" noWrap component="div">
+            <Typography variant="h6" noWrap component="div" sx={{ mr: 3 }}>
               Test Flow Suite
             </Typography>
           </Box>
+          
+          {/* Navigation Tabs in Header */}
+          <Box sx={{ flexGrow: 1 }}>
+            <Tabs 
+              value={getCurrentTab()} 
+              onChange={(_, newValue) => navigate(menuItems[newValue].path)}
+              textColor="inherit"
+              TabIndicatorProps={{
+                style: {
+                  backgroundColor: 'white',
+                }
+              }}
+              sx={{
+                '& .MuiTab-root': {
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  minHeight: 48,
+                  '&:hover': {
+                    color: 'white',
+                  },
+                  '&.Mui-selected': {
+                    color: 'white',
+                  },
+                },
+              }}
+            >
+              {menuItems.map((item) => (
+                <Tab 
+                  key={item.text}
+                  label={item.text} 
+                  icon={item.icon}
+                  iconPosition="start"
+                  sx={{ 
+                    textTransform: 'none',
+                    fontSize: '0.875rem',
+                    fontWeight: 500,
+                  }}
+                />
+              ))}
+            </Tabs>
+          </Box>
+          
           <IconButton sx={{ ml: 1 }} onClick={colorMode.toggleColorMode} color="inherit">
             {theme.palette.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
           </IconButton>
         </Toolbar>
       </AppBar>
+      
+      {/* Sidebar with Project Explorer */}
       <Drawer
         sx={{
           width: drawerWidth,
@@ -87,42 +312,33 @@ export default function Layout({ children }: LayoutProps) {
         anchor="left"
       >
         <Toolbar />
-        <Box sx={{ overflowX: 'hidden', overflowY: 'auto' }}>
-          <List sx={{ padding: 0 }}>
-            {menuItems.map((item, index) => (
-              <ListItem 
-                key={item.text}
-                onClick={() => navigate(item.path)}
-                className="animate-slideInLeft"
-                sx={{ 
-                  cursor: 'pointer',
-                  px: 2,
-                  mx: 1,
-                  width: 'calc(100% - 16px)',
-                  animationDelay: `${index * 0.1}s`,
-                  animationFillMode: 'both',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    transform: 'translateX(5px)',
-                    backgroundColor: theme.palette.mode === 'dark'
-                      ? 'rgba(255,255,255,0.12)'
-                      : 'rgba(0,0,0,0.08)',
-                  },
-                  '&:hover .MuiListItemIcon-root': {
-                    transform: 'scale(1.2)',
-                  }
-                }}
-              >
-                <ListItemIcon sx={{ 
-                  minWidth: 40,
-                  transition: 'transform 0.3s ease'
-                }}>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.text} />
-              </ListItem>
-            ))}
-          </List>
+        <Box 
+          sx={{ 
+            overflowX: 'hidden', 
+            overflowY: 'auto',
+            p: 1,
+            height: '100%'
+          }}
+        >
+          <Typography variant="h6" sx={{ px: 1, py: 2, fontWeight: 600 }}>
+            Explorer
+          </Typography>
+          <FlowTree
+            flows={flows}
+            projects={projects}
+            folders={folders}
+            onFlowMove={handleFlowMove}
+            onFlowDelete={handleFlowDelete}
+            onFlowDuplicate={handleFlowDuplicate}
+            onFlowRun={handleFlowRun}
+            onFolderCreateFlow={handleFolderCreateFlow}
+            onFolderRunAllFlows={handleFolderRunAllFlows}
+            onFolderDuplicate={handleFolderDuplicate}
+            onFolderDelete={handleFolderDelete}
+          />
         </Box>
       </Drawer>
+      
       <Main>
         <Toolbar />
         {children}
