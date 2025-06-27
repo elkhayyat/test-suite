@@ -16,7 +16,11 @@
     "dev:frontend": "npm run dev --workspace=frontend",
     "build": "npm run build --workspaces",
     "start": "npm run start --workspace=backend",
-    "start:mongo": "npm run start:mongo --workspace=backend"
+    "start:mongo": "npm run start:mongo --workspace=backend",
+    "test": "npm run test --workspaces",
+    "test:frontend": "npm run test --workspace=frontend",
+    "test:backend": "npm run test --workspace=backend",
+    "test:coverage": "npm run test:coverage --workspaces"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

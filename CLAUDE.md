@@ -8,9 +8,15 @@ Test Flow Suite is a web-based test automation platform with visual flow editing
 
 ## Commands
 
+### Quick Start (Recommended)
+- `make install` - Install all dependencies for the monorepo
+- `make dev` - Start everything with MongoDB (recommended setup)
+- `make dev-sqlite` - Start with SQLite backend (fallback option)
+
 ### Development
 - `npm install` - Install all dependencies for the monorepo
-- `npm run dev` - Start both frontend (port 3000) and backend (port 3001) in development mode
+- `npm run dev` - Start both frontend (port 3000) and backend (port 3001) in development mode (SQLite)
+- `npm run dev:mongo` - Start with MongoDB backend
 - `npm run build` - Build all packages
 
 ### Backend-specific
@@ -21,8 +27,33 @@ Test Flow Suite is a web-based test automation platform with visual flow editing
 
 ### Frontend-specific
 - `cd frontend && npm run dev` - Run frontend dev server
-- `cd frontend && npm run build` - Build production bundle
+- `cd frontend && npm run build` - Build TypeScript and create production bundle
 - `cd frontend && npm run preview` - Preview production build
+
+### Docker & Database
+- `make docker-up` - Start MongoDB with Docker Compose
+- `make docker-down` - Stop MongoDB containers
+- `make docker-logs` - View MongoDB container logs
+
+### Production
+- `make build` - Build all packages
+- `make start` - Start production server (SQLite)
+- `make start-mongo` - Start production server (MongoDB)
+
+### Testing
+- `npm test` - Run all tests (frontend + backend)
+- `npm run test:frontend` - Run frontend tests with Vitest
+- `npm run test:backend` - Run backend tests with Jest
+- `npm run test:coverage` - Run tests with coverage reports
+- `make test` - Run all tests via Makefile
+- `make test-frontend` - Frontend tests only
+- `make test-backend` - Backend tests only
+- `make test-coverage` - Tests with coverage
+
+### Utilities
+- `make stop` - Stop all running development processes
+- `make clean` - Clean build artifacts and node_modules
+- `make status` - Check service status
 
 ## Architecture
 
@@ -89,12 +120,54 @@ Can be started with Docker Compose. Collections include flows, environments, pro
 
 ## Environment Variables
 
-- `.env.example` - Template for environment configuration
-- MongoDB connection: `MONGODB_URI` (defaults to `mongodb://localhost:27017/testflowsuite`)
+Copy `.env.example` to `.env` and configure as needed:
+
+- `MONGODB_URL` - MongoDB connection string (defaults to `mongodb://app_user:app_password@localhost:27017/test-flow-suite`)
+- `MONGODB_DB_NAME` - Database name (defaults to `test-flow-suite`)
+- `PORT` - Backend server port (defaults to `3001`)
+- `FRONTEND_URL` - Frontend URL for CORS configuration (defaults to `http://localhost:3000`)
+
+### Docker Setup
+
+MongoDB is configured with Docker Compose:
+- MongoDB admin credentials: `admin/admin123`
+- Mongo Express web UI: `http://localhost:8081` (admin/admin123)
+- Database user credentials are auto-created via `init-mongo.js`
 
 ## Known Issues (from TODO.md)
-- Can't run single or selected steps from flow editor
-- Add run button to step right click menu to run this step
+
+### Active Bugs
+- Running a single step clears all other steps status
+
+### Pending Features
+- Add ability to import OpenAPI schema and generate requests
+- Add ability to run a full folder or project flows in the dashboard page
+- Move sidebar navigation items into the header
+- Add project/folders/flows explorer into the sidebar
+- Add ability to add a flow into specific folder or specific project
+- Add right click menu to file explorer for project/folder/flow operations
+
+## Development Patterns
+
+### Variable Interpolation
+- `EnhancedInterpolator` service handles variable resolution in test steps
+- Random value generation utilities in `randomGenerators.ts` for both frontend and backend
+- Environment variables are resolved at runtime during test execution
+
+### Curl Command Support
+- Curl parser utility converts curl commands to HTTP step configurations
+- Located in `frontend/src/utils/curlParser.ts` with basic tests
+- Supports headers, authentication, and request body parsing
+
+### Real-time Updates
+- Socket.io integration provides live test execution feedback
+- `TestRunner` service emits events during test execution
+- `useSocket` hook manages WebSocket connections in frontend
+
+### Service Architecture
+- Dependency injection pattern used throughout backend
+- Store services (FlowStore, ProjectStore, EnvironmentStore) provide data persistence abstraction
+- Both SQLite and MongoDB implementations available for each store
 
 ## Migration Notes
-See `MONGODB_MIGRATION.md` for instructions on switching from SQLite to MongoDB.
+See `docs/MONGODB_MIGRATION.md` for instructions on switching from SQLite to MongoDB.
