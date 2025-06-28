@@ -175,6 +175,15 @@ export default function FlowsOrganizer() {
         onFolderRunAllFlows={(folderId) => console.log('Run all flows in folder:', folderId)}
         onFolderDuplicate={(folder) => console.log('Duplicate folder:', folder)}
         onFolderDelete={(folderId, folderName, projectId) => console.log('Delete folder:', folderId, folderName, projectId)}
+        onFolderImport={(folderId, projectId) => console.log('Import to folder:', folderId, projectId)}
+        onFolderExport={(folderId) => console.log('Export folder:', folderId)}
+        onProjectCreateFlow={(projectId) => navigate(`/flows/new?projectId=${projectId}`)}
+        onProjectCreateFolder={(projectId) => console.log('Create folder in project:', projectId)}
+        onProjectRunAllFlows={(projectId) => console.log('Run all flows in project:', projectId)}
+        onProjectDuplicate={(project) => console.log('Duplicate project:', project)}
+        onProjectDelete={(projectId, projectName) => console.log('Delete project:', projectId, projectName)}
+        onProjectImport={(projectId) => console.log('Import to project:', projectId)}
+        onProjectExport={(projectId) => console.log('Export project:', projectId)}
       />
 
       <Fab

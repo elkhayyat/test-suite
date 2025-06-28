@@ -219,6 +219,292 @@ export default function Layout({ children }: LayoutProps) {
     }
   };
 
+  const handleFolderImport = (folderId: string, projectId: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.multiple = true;
+    input.onchange = async (event) => {
+      const files = (event.target as HTMLInputElement).files;
+      if (!files) return;
+
+      for (const file of Array.from(files)) {
+        try {
+          const text = await file.text();
+          const flowData = JSON.parse(text);
+          
+          // Create flow in the folder
+          const flow = {
+            ...flowData,
+            id: '', // Let backend generate new ID
+            projectId,
+            folderId,
+            name: flowData.name || file.name.replace('.json', '')
+          };
+          
+          await api.createFlow(flow);
+        } catch (error) {
+          console.error(`Failed to import ${file.name}:`, error);
+          alert(`Failed to import ${file.name}: ${error}`);
+        }
+      }
+      
+      // Reload flows
+      try {
+        const flowsData = await api.getFlows();
+        setFlows(flowsData || []);
+        alert(`Imported ${files.length} flows into folder`);
+      } catch (error) {
+        console.error('Failed to reload flows:', error);
+      }
+    };
+    input.click();
+  };
+
+  const handleFolderExport = async (folderId: string) => {
+    try {
+      const folderFlows = flows.filter(flow => flow.folderId === folderId);
+      
+      if (folderFlows.length === 0) {
+        alert('No flows in this folder to export');
+        return;
+      }
+
+      // Export each flow as a separate file
+      for (const flow of folderFlows) {
+        const flowData = JSON.stringify(flow, null, 2);
+        const blob = new Blob([flowData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${flow.name}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      
+      alert(`Exported ${folderFlows.length} flows from folder`);
+    } catch (error) {
+      console.error('Failed to export folder:', error);
+    }
+  };
+
+  const handleProjectCreateFlow = (projectId: string) => {
+    // Navigate to flow editor in create mode with project context
+    navigate(`/flows/new?projectId=${projectId}`);
+  };
+
+  const handleProjectCreateFolder = async (projectId: string) => {
+    const folderName = prompt('Enter folder name:');
+    if (!folderName) return;
+
+    try {
+      await api.createFolder(projectId, { name: folderName });
+      
+      // Reload folders
+      const projectFolders = await api.getProjectFolders(projectId);
+      setFolders(prev => ({ ...prev, [projectId]: projectFolders || [] }));
+      
+      alert(`Folder "${folderName}" created successfully`);
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      alert('Failed to create folder');
+    }
+  };
+
+  const handleProjectRunAllFlows = async (projectId: string) => {
+    try {
+      const projectFlows = flows.filter(flow => flow.projectId === projectId);
+      
+      if (projectFlows.length === 0) {
+        alert('No flows in this project to run');
+        return;
+      }
+
+      // Run all flows in the project sequentially
+      let successCount = 0;
+      for (const flow of projectFlows) {
+        try {
+          const { runId } = await api.startRun(flow.id);
+          console.log(`Started flow ${flow.name} with run ID: ${runId}`);
+          successCount++;
+        } catch (error) {
+          console.error(`Failed to start flow ${flow.name}:`, error);
+        }
+      }
+      
+      alert(`Started ${successCount} out of ${projectFlows.length} flows from the project`);
+      
+      // Navigate to test runs page
+      navigate('/runs');
+    } catch (error) {
+      console.error('Failed to run project flows:', error);
+    }
+  };
+
+  const handleProjectDuplicate = async (project: Project) => {
+    try {
+      const duplicatedProject = {
+        ...project,
+        name: `${project.name} (Copy)`,
+        id: '' // Let backend generate new ID
+      };
+      
+      await api.createProject(duplicatedProject);
+      
+      // Reload projects
+      const projectsData = await api.getProjects();
+      setProjects(projectsData || []);
+      
+      alert(`Project "${duplicatedProject.name}" created successfully`);
+    } catch (error) {
+      console.error('Failed to duplicate project:', error);
+      alert('Failed to duplicate project');
+    }
+  };
+
+  const handleProjectDelete = async (projectId: string, projectName: string) => {
+    if (window.confirm(`Are you sure you want to delete the project "${projectName}"? This will also delete all folders and flows in this project.`)) {
+      try {
+        await api.deleteProject(projectId);
+        
+        // Remove project flows and folders
+        setFlows(prev => prev.filter(f => f.projectId !== projectId));
+        setFolders(prev => {
+          const updated = { ...prev };
+          delete updated[projectId];
+          return updated;
+        });
+        setProjects(prev => prev.filter(p => p.id !== projectId));
+        
+        alert(`Project "${projectName}" deleted successfully`);
+      } catch (error) {
+        console.error('Failed to delete project:', error);
+        alert('Failed to delete project');
+      }
+    }
+  };
+
+  const handleProjectImport = (projectId: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.multiple = true;
+    input.onchange = async (event) => {
+      const files = (event.target as HTMLInputElement).files;
+      if (!files) return;
+
+      let importedCount = 0;
+      for (const file of Array.from(files)) {
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          
+          // Determine if it's a single flow or project export
+          if (data.steps && Array.isArray(data.steps)) {
+            // Single flow
+            const flow = {
+              ...data,
+              id: '', // Let backend generate new ID
+              projectId,
+              folderId: undefined,
+              name: data.name || file.name.replace('.json', '')
+            };
+            await api.createFlow(flow);
+            importedCount++;
+          } else if (data.flows && Array.isArray(data.flows)) {
+            // Project export with flows and folders
+            // Import folders first
+            if (data.folders) {
+              for (const folder of data.folders) {
+                try {
+                  await api.createFolder(projectId, {
+                    ...folder,
+                    id: undefined // Let backend generate new ID
+                  });
+                } catch (error) {
+                  console.error(`Failed to import folder ${folder.name}:`, error);
+                }
+              }
+            }
+            
+            // Import flows
+            for (const flow of data.flows) {
+              try {
+                await api.createFlow({
+                  ...flow,
+                  id: '', // Let backend generate new ID
+                  projectId
+                });
+                importedCount++;
+              } catch (error) {
+                console.error(`Failed to import flow ${flow.name}:`, error);
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to import ${file.name}:`, error);
+          alert(`Failed to import ${file.name}: ${error}`);
+        }
+      }
+      
+      // Reload data
+      try {
+        const [flowsData, projectFolders] = await Promise.all([
+          api.getFlows(),
+          api.getProjectFolders(projectId)
+        ]);
+        setFlows(flowsData || []);
+        setFolders(prev => ({ ...prev, [projectId]: projectFolders || [] }));
+        alert(`Imported ${importedCount} flows into project`);
+      } catch (error) {
+        console.error('Failed to reload data:', error);
+      }
+    };
+    input.click();
+  };
+
+  const handleProjectExport = async (projectId: string) => {
+    try {
+      const projectFlows = flows.filter(flow => flow.projectId === projectId);
+      const projectFolders = folders[projectId] || [];
+      const project = projects.find(p => p.id === projectId);
+      
+      if (projectFlows.length === 0) {
+        alert('No flows in this project to export');
+        return;
+      }
+
+      // Export project as a complete package
+      const exportData = {
+        project: {
+          name: project?.name || 'Unknown Project',
+          description: project?.description || ''
+        },
+        folders: projectFolders,
+        flows: projectFlows,
+        exportedAt: new Date().toISOString()
+      };
+      
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${project?.name || 'project'}-export.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      alert(`Exported project with ${projectFlows.length} flows and ${projectFolders.length} folders`);
+    } catch (error) {
+      console.error('Failed to export project:', error);
+      alert('Failed to export project');
+    }
+  };
+
   // Get current tab value based on location
   const getCurrentTab = () => {
     const currentItem = menuItems.find(item => item.path === location.pathname);
@@ -335,6 +621,15 @@ export default function Layout({ children }: LayoutProps) {
             onFolderRunAllFlows={handleFolderRunAllFlows}
             onFolderDuplicate={handleFolderDuplicate}
             onFolderDelete={handleFolderDelete}
+            onFolderImport={handleFolderImport}
+            onFolderExport={handleFolderExport}
+            onProjectCreateFlow={handleProjectCreateFlow}
+            onProjectCreateFolder={handleProjectCreateFolder}
+            onProjectRunAllFlows={handleProjectRunAllFlows}
+            onProjectDuplicate={handleProjectDuplicate}
+            onProjectDelete={handleProjectDelete}
+            onProjectImport={handleProjectImport}
+            onProjectExport={handleProjectExport}
           />
         </Box>
       </Drawer>
