@@ -1,15 +1,24 @@
 import React from 'react';
-import { Box, CircularProgress, Typography, Backdrop } from '@mui/material';
+import { 
+  Box, 
+  CircularProgress, 
+  Typography, 
+  Backdrop,
+  Paper
+} from '@mui/material';
 
 interface LoadingOverlayProps {
-  loading: boolean;
+  open: boolean;
   message?: string;
   backdrop?: boolean;
-  size?: number;
 }
 
-export function LoadingOverlay({ loading, message, backdrop = false, size = 40 }: LoadingOverlayProps) {
-  if (!loading) return null;
+export default function LoadingOverlay({ 
+  open, 
+  message = 'Loading...', 
+  backdrop = true 
+}: LoadingOverlayProps) {
+  if (!open) return null;
 
   const content = (
     <Box
@@ -17,26 +26,37 @@ export function LoadingOverlay({ loading, message, backdrop = false, size = 40 }
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: 2,
-        ...(backdrop ? {} : { p: 3 })
+        p: 3,
       }}
     >
-      <CircularProgress size={size} />
-      {message && (
-        <Typography variant="body2" color="text.secondary">
-          {message}
-        </Typography>
-      )}
+      <CircularProgress size={40} />
+      <Typography variant="body1" color="text.secondary">
+        {message}
+      </Typography>
     </Box>
   );
 
   if (backdrop) {
     return (
       <Backdrop
-        sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }}
-        open={loading}
+        open={open}
+        sx={{
+          color: '#fff',
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        }}
       >
-        {content}
+        <Paper
+          elevation={8}
+          sx={{
+            borderRadius: 2,
+            backgroundColor: 'background.paper',
+          }}
+        >
+          {content}
+        </Paper>
       </Backdrop>
     );
   }
@@ -60,5 +80,3 @@ export function LoadingOverlay({ loading, message, backdrop = false, size = 40 }
     </Box>
   );
 }
-
-export default LoadingOverlay;

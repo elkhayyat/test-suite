@@ -234,7 +234,7 @@ export default function Projects() {
 
   return (
     <Box className="animate-fadeIn" sx={{ position: 'relative' }}>
-      <LoadingOverlay loading={loading} message="Loading projects..." />
+      <LoadingOverlay open={loading} message="Loading projects..." />
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
