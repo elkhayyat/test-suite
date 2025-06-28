@@ -10,6 +10,7 @@ import TestRunDetails from './pages/TestRunDetails';
 import Environments from './pages/Environments';
 import Projects from './pages/Projects';
 import Organizations from './pages/Organizations';
+import { EnvironmentProvider } from './contexts/EnvironmentContext';
 
 interface ThemeContextType {
   toggleColorMode: () => void;
@@ -204,20 +205,22 @@ function App() {
     <ColorModeContext.Provider value={colorMode}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router>
-          <Layout>
-            <Routes>
-              <Route path="/" element={<FlowsOrganizer />} />
-              <Route path="/projects" element={<Projects />} />
-              <Route path="/flows/:id" element={<FlowEditor />} />
-              <Route path="/flows/new" element={<FlowEditor />} />
-              <Route path="/runs" element={<TestRuns />} />
-              <Route path="/runs/:runId" element={<TestRunDetails />} />
-              <Route path="/environments" element={<Environments />} />
-              <Route path="/organizations" element={<Organizations />} />
-            </Routes>
-          </Layout>
-        </Router>
+        <EnvironmentProvider>
+          <Router>
+            <Layout>
+              <Routes>
+                <Route path="/" element={<FlowsOrganizer />} />
+                <Route path="/projects" element={<Projects />} />
+                <Route path="/flows/new" element={<FlowEditor />} />
+                <Route path="/flows/:id" element={<FlowEditor />} />
+                <Route path="/runs" element={<TestRuns />} />
+                <Route path="/runs/:runId" element={<TestRunDetails />} />
+                <Route path="/environments" element={<Environments />} />
+                <Route path="/organizations" element={<Organizations />} />
+              </Routes>
+            </Layout>
+          </Router>
+        </EnvironmentProvider>
       </ThemeProvider>
     </ColorModeContext.Provider>
   );

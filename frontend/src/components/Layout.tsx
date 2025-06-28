@@ -11,6 +11,8 @@ import BusinessIcon from '@mui/icons-material/Business';
 import { styled, useTheme } from '@mui/material/styles';
 import { ColorModeContext } from '../App';
 import FlowTree from './FlowTree';
+import EnvironmentSelector from './EnvironmentSelector';
+import { useEnvironment } from '../contexts/EnvironmentContext';
 import { TestFlow, Project, Folder } from '../../../shared/src/types';
 import { api } from '../services/api';
 
@@ -37,6 +39,7 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const theme = useTheme();
   const colorMode = useContext(ColorModeContext);
+  const { selectedEnvironment, setSelectedEnvironment } = useEnvironment();
   const [flows, setFlows] = useState<TestFlow[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [folders, setFolders] = useState<{ [projectId: string]: Folder[] }>({});
@@ -50,34 +53,65 @@ export default function Layout({ children }: LayoutProps) {
   ];
 
   // Load data for the explorer
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [flowsData, projectsData] = await Promise.all([
-          api.getFlows(),
-          api.getProjects()
-        ]);
-        setFlows(flowsData || []);
-        setProjects(projectsData || []);
-        
-        // Load folders for each project
-        const foldersMap: { [projectId: string]: Folder[] } = {};
-        for (const project of projectsData || []) {
-          try {
-            const projectFolders = await api.getProjectFolders(project.id);
-            foldersMap[project.id] = projectFolders || [];
-          } catch (error) {
-            console.error(`Failed to load folders for project ${project.id}:`, error);
-            foldersMap[project.id] = [];
-          }
+  const loadData = async () => {
+    try {
+      const [flowsData, projectsData] = await Promise.all([
+        api.getFlows(),
+        api.getProjects()
+      ]);
+      setFlows(flowsData || []);
+      setProjects(projectsData || []);
+      
+      // Load folders for each project
+      const foldersMap: { [projectId: string]: Folder[] } = {};
+      for (const project of projectsData || []) {
+        try {
+          const projectFolders = await api.getProjectFolders(project.id);
+          foldersMap[project.id] = projectFolders || [];
+        } catch (error) {
+          console.error(`Failed to load folders for project ${project.id}:`, error);
+          foldersMap[project.id] = [];
         }
-        setFolders(foldersMap);
-      } catch (error) {
-        console.error('Failed to load data for explorer:', error);
       }
-    };
+      setFolders(foldersMap);
+    } catch (error) {
+      console.error('Failed to load data for explorer:', error);
+    }
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
+
+  // Refresh data when navigating to key pages or flow pages
+  useEffect(() => {
+    if (location.pathname === '/' || location.pathname === '/projects') {
+      console.log('Refreshing explorer data due to navigation to:', location.pathname);
+      loadData();
+    }
+  }, [location.pathname]);
+
+  // Listen for custom refresh events
+  useEffect(() => {
+    const handleRefreshExplorer = () => {
+      console.log('Refreshing explorer data due to custom event');
+      loadData();
+    };
+    
+    window.addEventListener('refreshExplorer', handleRefreshExplorer);
+    
+    return () => {
+      window.removeEventListener('refreshExplorer', handleRefreshExplorer);
+    };
+  }, []);
+  
+  // Initial refresh when entering flow pages
+  useEffect(() => {
+    if (location.pathname.startsWith('/flows/')) {
+      console.log('Initial refresh for flow page:', location.pathname);
+      loadData();
+    }
+  }, [location.pathname]);
 
   const handleFlowMove = async (flowId: string, newProjectId?: string, newFolderId?: string) => {
     try {
@@ -115,7 +149,7 @@ export default function Layout({ children }: LayoutProps) {
 
   const handleFlowRun = async (flowId: string) => {
     try {
-      const { runId } = await api.startRun(flowId);
+      const { runId } = await api.startRun(flowId, selectedEnvironment);
       // Navigate to the run details page to show real-time results
       navigate(`/runs/${runId}`);
     } catch (error) {
@@ -124,8 +158,11 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   const handleFolderCreateFlow = (folderId: string, projectId: string) => {
+    console.log('handleFolderCreateFlow called:', { folderId, projectId });
     // Navigate to flow editor in create mode with folder and project context
-    navigate(`/flows/new?folderId=${folderId}&projectId=${projectId}`);
+    const url = `/flows/new?folderId=${folderId}&projectId=${projectId}`;
+    console.log('Navigating to:', url);
+    navigate(url);
   };
 
   const handleFolderRunAllFlows = async (folderId: string) => {
@@ -138,16 +175,19 @@ export default function Layout({ children }: LayoutProps) {
       }
 
       // Run all flows in the folder sequentially
+      let successCount = 0;
       for (const flow of folderFlows) {
         try {
-          const { runId } = await api.startRun(flow.id);
+          const { runId } = await api.startRun(flow.id, selectedEnvironment);
           console.log(`Started flow ${flow.name} with run ID: ${runId}`);
+          successCount++;
         } catch (error) {
           console.error(`Failed to start flow ${flow.name}:`, error);
         }
       }
       
-      alert(`Started ${folderFlows.length} flows from the folder`);
+      alert(`Started ${successCount} out of ${folderFlows.length} flows from the folder`);
+      navigate('/runs');
     } catch (error) {
       console.error('Failed to run folder flows:', error);
     }
@@ -291,8 +331,11 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   const handleProjectCreateFlow = (projectId: string) => {
+    console.log('handleProjectCreateFlow called:', { projectId });
     // Navigate to flow editor in create mode with project context
-    navigate(`/flows/new?projectId=${projectId}`);
+    const url = `/flows/new?projectId=${projectId}`;
+    console.log('Navigating to:', url);
+    navigate(url);
   };
 
   const handleProjectCreateFolder = async (projectId: string) => {
@@ -326,7 +369,7 @@ export default function Layout({ children }: LayoutProps) {
       let successCount = 0;
       for (const flow of projectFlows) {
         try {
-          const { runId } = await api.startRun(flow.id);
+          const { runId } = await api.startRun(flow.id, selectedEnvironment);
           console.log(`Started flow ${flow.name} with run ID: ${runId}`);
           successCount++;
         } catch (error) {
@@ -575,6 +618,15 @@ export default function Layout({ children }: LayoutProps) {
                 />
               ))}
             </Tabs>
+          </Box>
+          
+          {/* Global Environment Selector */}
+          <Box sx={{ mx: 2 }}>
+            <EnvironmentSelector 
+              value={selectedEnvironment}
+              onChange={setSelectedEnvironment}
+              size="small"
+            />
           </Box>
           
           <IconButton sx={{ ml: 1 }} onClick={colorMode.toggleColorMode} color="inherit">

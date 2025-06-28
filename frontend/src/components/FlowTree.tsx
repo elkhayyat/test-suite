@@ -21,7 +21,6 @@ import {
   CreateNewFolder as CreateNewFolderIcon,
   Upload as UploadIcon,
   Download as DownloadIcon,
-  AccountTree as ProjectIcon,
 } from '@mui/icons-material';
 import { TestFlow, Project, Folder } from '../../../shared/src/types';
 import { useNavigate } from 'react-router-dom';
@@ -121,9 +120,20 @@ export default function FlowTree({
   };
 
   const handleFolderMenuOpen = (event: React.MouseEvent, folderId: string) => {
+    console.log('Folder context menu triggered for:', folderId, 'button:', event.button, 'type:', event.type);
+    
+    // Always prevent default to stop browser context menu
     event.preventDefault();
     event.stopPropagation();
-    setFolderAnchorEl(prev => ({ ...prev, [folderId]: event.currentTarget as HTMLElement }));
+    
+    // Ensure it's a right-click (button 2) or context menu event
+    if (event.button === 2 || event.type === 'contextmenu') {
+      console.log('Opening folder context menu for:', folderId);
+      setFolderAnchorEl(prev => ({ ...prev, [folderId]: event.currentTarget as HTMLElement }));
+      return false; // Additional prevention
+    }
+    
+    return false; // Always return false to prevent default
   };
 
   const handleFolderMenuClose = (folderId: string) => {
@@ -131,9 +141,20 @@ export default function FlowTree({
   };
 
   const handleProjectMenuOpen = (event: React.MouseEvent, projectId: string) => {
+    console.log('Project context menu triggered for:', projectId, 'button:', event.button, 'type:', event.type);
+    
+    // Always prevent default to stop browser context menu
     event.preventDefault();
     event.stopPropagation();
-    setProjectAnchorEl(prev => ({ ...prev, [projectId]: event.currentTarget as HTMLElement }));
+    
+    // Ensure it's a right-click (button 2) or context menu event
+    if (event.button === 2 || event.type === 'contextmenu') {
+      console.log('Opening project context menu for:', projectId);
+      setProjectAnchorEl(prev => ({ ...prev, [projectId]: event.currentTarget as HTMLElement }));
+      return false; // Additional prevention
+    }
+    
+    return false; // Always return false to prevent default
   };
 
   const handleProjectMenuClose = (projectId: string) => {
@@ -333,11 +354,8 @@ export default function FlowTree({
           onClose={() => handleFolderMenuClose(folder.id)}
         >
           <MenuItem onClick={() => {
-            const projectFolder = Object.entries(folders).find(([_, folderList]) => 
-              folderList.some(f => f.id === folder.id)
-            );
-            const projectId = projectFolder ? projectFolder[0] : '';
-            onFolderCreateFlow(folder.id, projectId);
+            console.log('Folder Create Flow clicked:', { folderId: folder.id, projectId: folder.projectId });
+            onFolderCreateFlow(folder.id, folder.projectId);
             handleFolderMenuClose(folder.id);
           }}>
             <AddIcon fontSize="small" sx={{ mr: 1 }} />
@@ -351,11 +369,7 @@ export default function FlowTree({
             Run All Flows
           </MenuItem>
           <MenuItem onClick={() => {
-            const projectFolder = Object.entries(folders).find(([_, folderList]) => 
-              folderList.some(f => f.id === folder.id)
-            );
-            const projectId = projectFolder ? projectFolder[0] : '';
-            onFolderImport(folder.id, projectId);
+            onFolderImport(folder.id, folder.projectId);
             handleFolderMenuClose(folder.id);
           }}>
             <UploadIcon fontSize="small" sx={{ mr: 1 }} />
@@ -376,11 +390,7 @@ export default function FlowTree({
             Duplicate
           </MenuItem>
           <MenuItem onClick={() => {
-            const projectFolder = Object.entries(folders).find(([_, folderList]) => 
-              folderList.some(f => f.id === folder.id)
-            );
-            const projectId = projectFolder ? projectFolder[0] : '';
-            onFolderDelete(folder.id, folder.name, projectId);
+            onFolderDelete(folder.id, folder.name, folder.projectId);
             handleFolderMenuClose(folder.id);
           }}>
             <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
@@ -452,6 +462,7 @@ export default function FlowTree({
             onClose={() => handleProjectMenuClose(project.id)}
           >
             <MenuItem onClick={() => {
+              console.log('Project Create Flow clicked:', { projectId: project.id });
               onProjectCreateFlow(project.id);
               handleProjectMenuClose(project.id);
             }}>
@@ -509,7 +520,12 @@ export default function FlowTree({
   const unassignedFlows = getUnassignedFlows();
 
   return (
-    <Box>
+    <Box onContextMenu={(e) => {
+      // If we reach here, it means no specific handler caught the event
+      // Prevent browser context menu globally in the tree
+      e.preventDefault();
+      return false;
+    }}>
       {projects.map(renderProject)}
       
       {unassignedFlows.length > 0 && (

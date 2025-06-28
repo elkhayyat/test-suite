@@ -10,7 +10,7 @@ import ReactFlow, {
   useEdgesState,
   Connection,
 } from 'react-flow-renderer';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Box, Paper, Button, TextField, Snackbar, Alert, CircularProgress, Typography, Switch, FormControlLabel, IconButton, Collapse, Divider } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -27,8 +27,8 @@ import { api } from '../services/api';
 import StepPanel from '../components/StepPanel';
 import StepNode from '../components/StepNode';
 import StepConfigPanel from '../components/StepConfigPanel';
-import EnvironmentSelector from '../components/EnvironmentSelector';
 import { useSocket } from '../hooks/useSocket';
+import { useEnvironment } from '../contexts/EnvironmentContext';
 import ContextMenu from '../components/ContextMenu';
 import InteractiveConsole from '../components/InteractiveConsole';
 import { ConsoleCommandExecutor } from '../services/ConsoleCommandExecutor';
@@ -40,9 +40,23 @@ const nodeTypes = {
 };
 
 export default function FlowEditor() {
+  console.log('FlowEditor component rendering...');
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  console.log('FlowEditor params:', { id, searchParams: Object.fromEntries(searchParams), pathname: location.pathname });
+  
+  let selectedEnvironment = '';
+  let environmentVariables = {};
+  try {
+    const envContext = useEnvironment();
+    selectedEnvironment = envContext.selectedEnvironment;
+    environmentVariables = envContext.environmentVariables;
+    console.log('Environment context loaded successfully');
+  } catch (error) {
+    console.error('Failed to load environment context:', error);
+  }
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [flowName, setFlowName] = useState('New Flow');
@@ -63,7 +77,6 @@ export default function FlowEditor() {
     }
   };
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '' });
-  const [selectedEnvironment, setSelectedEnvironment] = useState<string>('');
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(() => {
     const saved = localStorage.getItem('autoSaveEnabled');
     return saved === null ? true : saved === 'true';
@@ -84,14 +97,35 @@ export default function FlowEditor() {
   });
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
   const [commandExecutor] = useState(() => new ConsoleCommandExecutor());
-  const [environmentVariables, setEnvironmentVariables] = useState<any[]>([]);
   const [openAPIDialogOpen, setOpenAPIDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (id && id !== 'new') {
+    console.log('FlowEditor mounted/updated with:', { id, searchParams: Object.fromEntries(searchParams), pathname: location.pathname });
+    
+    // Check if we're on the new flow path (either by id="new" or pathname="/flows/new")
+    const isNewFlow = id === 'new' || location.pathname === '/flows/new';
+    
+    if (id && id !== 'new' && !isNewFlow) {
+      console.log('Loading existing flow:', id);
       loadFlow(id);
+    } else if (isNewFlow) {
+      // Reset state for new flow creation
+      console.log('Resetting state for new flow (isNewFlow=true)');
+      setFlowName('New Flow');
+      setFlowDescription('');
+      setNodes([]);
+      setEdges([]);
+      setSelectedNode(null);
+      setStepResults({});
+      setCurrentRun(null);
+      setConsoleLogs([]);
+      
+      // Mark initial load complete
+      setTimeout(() => {
+        isInitialLoadRef.current = false;
+      }, 100);
     }
-  }, [id]);
+  }, [id, searchParams, location.pathname]);
 
   // Auto-save effect
   useEffect(() => {
@@ -147,21 +181,6 @@ export default function FlowEditor() {
     }
   };
 
-  // Load environment variables when environment changes
-  useEffect(() => {
-    const loadEnvironmentVariables = async () => {
-      if (selectedEnvironment) {
-        try {
-          const variables = await api.getEnvironmentVariables(selectedEnvironment);
-          setEnvironmentVariables(variables);
-        } catch (error) {
-          console.error('Failed to load environment variables:', error);
-        }
-      }
-    };
-    
-    loadEnvironmentVariables();
-  }, [selectedEnvironment]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -562,6 +581,7 @@ export default function FlowEditor() {
     // Get folder and project context from URL params for new flows
     const folderId = searchParams.get('folderId');
     const projectId = searchParams.get('projectId');
+    console.log('handleSave - URL params:', { folderId, projectId, isAutoSave });
     
     const flow: Partial<TestFlow> = {
       name: flowName,
@@ -594,6 +614,10 @@ export default function FlowEditor() {
       }
       setSaveStatus('saved');
       setLastSaved(new Date());
+      
+      // Trigger explorer refresh
+      console.log('Triggering explorer refresh after flow save');
+      window.dispatchEvent(new Event('refreshExplorer'));
     } catch (error) {
       console.error('Failed to save flow:', error);
       if (!isAutoSave) {
@@ -957,10 +981,6 @@ export default function FlowEditor() {
             Import OpenAPI
           </Button>
           <Box sx={{ borderLeft: 1, borderColor: 'divider', pl: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-            <EnvironmentSelector 
-              value={selectedEnvironment}
-              onChange={setSelectedEnvironment}
-            />
             <Button
               variant="contained"
               className="gradient-primary"
