@@ -1,6 +1,7 @@
 import { Node, Edge } from 'react-flow-renderer';
 import { useUndoRedo } from './useUndoRedo';
 import { useCallback } from 'react';
+import { ensurePosition } from '../utils/positionUtils';
 
 export interface FlowState {
   nodes: Node[];
@@ -33,7 +34,7 @@ export function useFlowUndoRedo(initialNodes: Node[], initialEdges: Edge[]) {
     // Ensure the node has a position property
     const nodeWithPosition = {
       ...node,
-      position: node.position || { x: 250, y: 250 }
+      position: ensurePosition(node.position)
     };
     const newState: FlowState = {
       nodes: [...state.nodes, nodeWithPosition],
@@ -61,7 +62,7 @@ export function useFlowUndoRedo(initialNodes: Node[], initialEdges: Edge[]) {
       nodes: state.nodes.map(n => n.id === nodeId ? { 
         ...n, 
         ...updates, 
-        position: (updates.position || n.position || { x: 250, y: 250 })
+        position: ensurePosition(updates.position || n.position)
       } : n),
       edges: state.edges,
     };
@@ -120,7 +121,7 @@ export function useFlowUndoRedo(initialNodes: Node[], initialEdges: Edge[]) {
     // Ensure all pasted nodes have position
     const nodesWithPosition = nodesToPaste.map(node => ({
       ...node,
-      position: node.position || { x: 250, y: 250 }
+      position: ensurePosition(node.position)
     }));
     const newState: FlowState = {
       nodes: [...state.nodes, ...nodesWithPosition],
@@ -137,7 +138,7 @@ export function useFlowUndoRedo(initialNodes: Node[], initialEdges: Edge[]) {
     // Ensure all nodes have position
     const nodesWithPosition = newNodes.map(node => ({
       ...node,
-      position: node.position || { x: 250, y: 250 }
+      position: ensurePosition(node.position)
     }));
     const newState: FlowState = {
       nodes: nodesWithPosition,
@@ -151,7 +152,7 @@ export function useFlowUndoRedo(initialNodes: Node[], initialEdges: Edge[]) {
     // Ensure all nodes have position
     const nodesWithPosition = newNodes.map(node => ({
       ...node,
-      position: node.position || { x: 250, y: 250 }
+      position: ensurePosition(node.position)
     }));
     const newState: FlowState = {
       nodes: nodesWithPosition,

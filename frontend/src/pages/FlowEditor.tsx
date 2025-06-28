@@ -21,7 +21,7 @@ import CloudOffIcon from '@mui/icons-material/CloudOff';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import { TestFlow, TestStep, TestRun, StepResult, ConsoleLog, HttpStepConfig, BrowserStepConfig, DelayStepConfig, AssertionStepConfig, ConditionStepConfig, SqlStepConfig, Connection } from '../../../shared/src/types';
+import { TestStep, TestRun, StepResult, ConsoleLog, HttpStepConfig, BrowserStepConfig, DelayStepConfig, AssertionStepConfig, ConditionStepConfig, SqlStepConfig, Connection } from '../../../shared/src/types';
 import { api } from '../services/api';
 import StepPanel from '../components/StepPanel';
 import StepNode from '../components/StepNode';
@@ -43,6 +43,21 @@ import { useFlowEditorState } from '../hooks/useFlowEditorState';
 import { useAsyncOperations } from '../hooks/useAsyncOperation';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { ComponentErrorBoundary } from '../components/ErrorBoundary';
+import { 
+  ensurePosition, 
+  ensureInitialPosition, 
+  calculateOffsetPosition, 
+  calculateGridPosition, 
+  calculateDropPosition 
+} from '../utils/positionUtils';
+import { 
+  usePerformanceTimer, 
+  useComponentPerformance
+} from '../utils/performanceUtils';
+import { 
+  useFlowPerformanceMonitoring, 
+  useBulkOperationMonitoring 
+} from '../hooks/useFlowPerformanceMonitoring';
 
 const nodeTypes = {
   testStep: StepNode,
@@ -53,6 +68,10 @@ export default function FlowEditor() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  
+  // Performance monitoring
+  const { measureSync, measureAsync } = usePerformanceTimer();
+  useComponentPerformance('FlowEditor');
   
   let selectedEnvironment = '';
   let environmentVariables: any = {};
@@ -95,6 +114,10 @@ export default function FlowEditor() {
   useEffect(() => {
     setEdges(undoEdges);
   }, [undoEdges, setEdges]);
+
+  // Flow-specific performance monitoring
+  useFlowPerformanceMonitoring(nodes.length, edges.length);
+  const { measureBulkOperation } = useBulkOperationMonitoring();
 
   // Use optimized state management
   const {
@@ -439,10 +462,7 @@ export default function FlowEditor() {
         const newNode: Node = {
           id: `${Date.now()}`,
           type: 'testStep',
-          position: { 
-            x: (selectedNode?.position?.x || 0) + 50, 
-            y: (selectedNode?.position?.y || 0) + 50 
-          },
+          position: calculateOffsetPosition(selectedNode?.position),
           data: {
             ...clipboard,
             id: `${Date.now()}`,
@@ -470,25 +490,37 @@ export default function FlowEditor() {
 
   const loadFlow = async (flowId: string) => {
     try {
-      const flow = await loadFlowOperation.execute(flowId);
+      const { result: flow } = await measureAsync('loadFlow', 
+        () => loadFlowOperation.execute(flowId)
+      );
+      
       flowEditActions.resetFlow(flow.name, flow.description || '');
       
-      const flowNodes = flow.steps.map((step) => ({
-        id: step.id,
-        type: 'testStep',
-        position: step.position || { x: 100, y: 100 },
-        data: step,
-      }));
+      const { result: flowNodes } = measureSync('processFlowNodes', 
+        () => flow.steps.map((step) => ({
+          id: step.id,
+          type: 'testStep',
+          position: ensureInitialPosition(step.position),
+          data: step,
+        })), 
+        { nodeCount: flow.steps.length }
+      );
       
-      const flowEdges = flow.connections.map((conn) => ({
-        id: conn.id,
-        source: conn.source,
-        target: conn.target,
-        sourceHandle: conn.sourceHandle,
-        targetHandle: conn.targetHandle,
-      }));
+      const { result: flowEdges } = measureSync('processFlowEdges',
+        () => flow.connections.map((conn) => ({
+          id: conn.id,
+          source: conn.source,
+          target: conn.target,
+          sourceHandle: conn.sourceHandle,
+          targetHandle: conn.targetHandle,
+        })),
+        { edgeCount: flow.connections.length }
+      );
       
-      undoableResetState(flowNodes, flowEdges);
+      measureSync('resetFlowState', 
+        () => undoableResetState(flowNodes, flowEdges),
+        { nodeCount: flowNodes.length, edgeCount: flowEdges.length }
+      );
       
       // Mark initial load complete after a short delay
       setTimeout(() => {
@@ -575,10 +607,7 @@ export default function FlowEditor() {
       return;
     }
 
-    const position = {
-      x: event.clientX - reactFlowBounds.left,
-      y: event.clientY - reactFlowBounds.top,
-    };
+    const position = calculateDropPosition(event, reactFlowBounds);
 
     handleAddStep(type as TestStep['type'], position);
   }, []);
@@ -636,7 +665,7 @@ export default function FlowEditor() {
     const newNode: Node = {
       id: `${Date.now()}`,
       type: 'testStep',
-      position: position || { x: 250, y: 250 },
+      position: ensurePosition(position),
       data: {
         id: `${Date.now()}`,
         type,
@@ -654,7 +683,7 @@ export default function FlowEditor() {
       uiActions.setSelectedNode({ 
         ...selectedNode, 
         data,
-        position: selectedNode.position || { x: 250, y: 250 } // Ensure position exists
+        position: ensurePosition(selectedNode.position) // Ensure position exists
       });
     }
     debouncedSetSaveStatus('unsaved');
@@ -665,26 +694,32 @@ export default function FlowEditor() {
     const folderId = searchParams.get('folderId');
     const projectId = searchParams.get('projectId');
     
-    const flow: Partial<TestFlow> = {
-      name: flowName,
-      description: flowDescription,
-      ...(projectId && { projectId }),
-      ...(folderId && { folderId }),
-      steps: nodes.map((node) => ({
-        ...node.data,
-        position: node.position || { x: 250, y: 250 },
-      })),
-      connections: edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle || undefined,
-        targetHandle: edge.targetHandle || undefined,
-      })),
-    };
+    const { result: flow } = measureSync('prepareFlowData', 
+      () => ({
+        name: flowName,
+        description: flowDescription,
+        ...(projectId && { projectId }),
+        ...(folderId && { folderId }),
+        steps: nodes.map((node) => ({
+          ...node.data,
+          position: ensurePosition(node.position),
+        })),
+        connections: edges.map((edge) => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle || undefined,
+          targetHandle: edge.targetHandle || undefined,
+        })),
+      }),
+      { nodeCount: nodes.length, edgeCount: edges.length }
+    );
 
     try {
-      const result = await saveFlowOperation.execute(flow);
+      const { result } = await measureAsync('saveFlow', 
+        () => saveFlowOperation.execute(flow),
+        { nodeCount: nodes.length, edgeCount: edges.length }
+      );
       
       if (id === 'new' && result?.id) {
         navigate(`/flows/${result.id}`);
@@ -717,7 +752,7 @@ export default function FlowEditor() {
       description: flowDescription,
       steps: nodes.map((node) => ({
         ...node.data,
-        position: node.position || { x: 250, y: 250 },
+        position: ensurePosition(node.position),
       })),
       connections: edges.map((edge) => ({
         id: edge.id,
@@ -786,19 +821,20 @@ export default function FlowEditor() {
   };
 
   const handleOpenAPIImport = (importedSteps: TestStep[]) => {
-    // Create nodes from imported steps
-    const newNodes: Node[] = importedSteps.map((step, index) => ({
-      id: step.id,
-      type: 'testStep',
-      position: { 
-        x: 250 + (index % 3) * 300, 
-        y: 250 + Math.floor(index / 3) * 150 
-      },
-      data: step,
-    }));
+    const { result: newNodes } = measureSync('createImportNodes',
+      () => importedSteps.map((step, index) => ({
+        id: step.id,
+        type: 'testStep',
+        position: calculateGridPosition(index),
+        data: step,
+      })),
+      { nodeCount: importedSteps.length }
+    );
 
     // Add multiple nodes one by one to maintain undo/redo tracking
-    newNodes.forEach(node => undoableAddNode(node));
+    measureBulkOperation('addImportedNodes', newNodes.length, 
+      () => newNodes.forEach(node => undoableAddNode(node))
+    );
     
     setSnackbar({ 
       open: true, 
@@ -814,7 +850,10 @@ export default function FlowEditor() {
         await handleSave();
       }
       
-      await runFlowOperation.execute(id!, selectedEnvironment);
+      await measureAsync('executeFlow',
+        () => runFlowOperation.execute(id!, selectedEnvironment),
+        { nodeCount: nodes.length, edgeCount: edges.length }
+      );
       setSnackbar({ open: true, message: 'Flow run started - watch the results on each step!', severity: 'success' });
       
       // Don't navigate away - stay here to see real-time results
@@ -841,10 +880,7 @@ export default function FlowEditor() {
       const newNode: Node = {
         id: `${Date.now()}`,
         type: 'testStep',
-        position: {
-          x: (contextMenuNode.position?.x || 250) + 50,
-          y: (contextMenuNode.position?.y || 250) + 50,
-        },
+        position: calculateOffsetPosition(contextMenuNode.position),
         data: {
           ...clipboard,
           id: `${Date.now()}`,
@@ -862,10 +898,7 @@ export default function FlowEditor() {
       const newNode: Node = {
         id: `${Date.now()}`,
         type: 'testStep',
-        position: {
-          x: (contextMenuNode.position?.x || 250) + 50,
-          y: (contextMenuNode.position?.y || 250) + 50,
-        },
+        position: calculateOffsetPosition(contextMenuNode.position),
         data: {
           ...(contextMenuNode.data as TestStep),
           id: `${Date.now()}`,
@@ -926,6 +959,30 @@ export default function FlowEditor() {
   
   // Memoized nodes with step results - expensive operation with stable dependencies
   const nodesWithResults = useMemo(() => {
+    // Only measure if we have a significant number of nodes
+    if (nodes.length > 50) {
+      return measureSync('renderNodes', 
+        () => nodes.map(node => {
+          const hasResult = stepResults[node.data.id];
+          const resultStatus = hasResult?.status;
+          const nodeIsSelected = isItemSelected(node.id);
+          
+          return {
+            ...node,
+            position: ensurePosition(node.position), // Ensure position always exists
+            data: {
+              ...node.data,
+              result: hasResult,
+              isRunning: currentRunStatus === 'running' && resultStatus === 'running',
+              isSelected: nodeIsSelected,
+              selectionMode
+            }
+          };
+        }),
+        { nodeCount: nodes.length }
+      ).result;
+    }
+    
     return nodes.map(node => {
       const hasResult = stepResults[node.data.id];
       const resultStatus = hasResult?.status;
@@ -933,7 +990,7 @@ export default function FlowEditor() {
       
       return {
         ...node,
-        position: node.position || { x: 250, y: 250 }, // Ensure position always exists
+        position: ensurePosition(node.position), // Ensure position always exists
         data: {
           ...node.data,
           result: hasResult,
@@ -943,7 +1000,7 @@ export default function FlowEditor() {
         }
       };
     });
-  }, [nodes, stepResults, currentRunStatus, isItemSelected, selectionMode]);
+  }, [nodes, stepResults, currentRunStatus, isItemSelected, selectionMode, measureSync]);
 
   // Memoized available steps for StepConfigPanel with stable reference
   const availableSteps = useMemo(() => {
@@ -1057,10 +1114,7 @@ export default function FlowEditor() {
           const newNode: Node = {
             id: `${Date.now()}`,
             type: 'testStep',
-            position: { 
-              x: (selectedNode?.position?.x || 0) + 50, 
-              y: (selectedNode?.position?.y || 0) + 50 
-            },
+            position: calculateOffsetPosition(selectedNode?.position),
             data: {
               ...clipboard,
               id: `${Date.now()}`,
