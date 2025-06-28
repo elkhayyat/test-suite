@@ -17,9 +17,19 @@ interface EnvironmentProviderProps {
 }
 
 export function EnvironmentProvider({ children }: EnvironmentProviderProps) {
-  const [selectedEnvironment, setSelectedEnvironment] = useState<string>('');
+  const [selectedEnvironment, setSelectedEnvironment] = useState<string>(() => {
+    // Load from localStorage on initialization
+    const saved = localStorage.getItem('selectedEnvironment');
+    return saved || '';
+  });
   const [environmentVariables, setEnvironmentVariables] = useState<{ [key: string]: string }>({});
   const [environments, setEnvironments] = useState<Environment[]>([]);
+
+  // Wrapper function to save to localStorage when environment changes
+  const handleSetSelectedEnvironment = (environmentId: string) => {
+    setSelectedEnvironment(environmentId);
+    localStorage.setItem('selectedEnvironment', environmentId);
+  };
 
   // Load environments on mount
   useEffect(() => {
@@ -50,10 +60,18 @@ export function EnvironmentProvider({ children }: EnvironmentProviderProps) {
       const data = await api.getEnvironments();
       setEnvironments(data);
       
-      // Auto-select default environment if none selected
-      if (!selectedEnvironment && data.length > 0) {
+      // Check if saved environment still exists
+      if (selectedEnvironment && data.length > 0) {
+        const savedEnvExists = data.some(env => env.id === selectedEnvironment);
+        if (!savedEnvExists) {
+          // Saved environment no longer exists, select default
+          const defaultEnv = data.find(e => e.isDefault) || data[0];
+          handleSetSelectedEnvironment(defaultEnv.id);
+        }
+      } else if (!selectedEnvironment && data.length > 0) {
+        // No environment selected, auto-select default
         const defaultEnv = data.find(e => e.isDefault) || data[0];
-        setSelectedEnvironment(defaultEnv.id);
+        handleSetSelectedEnvironment(defaultEnv.id);
       }
     } catch (error) {
       console.error('Failed to load environments:', error);
@@ -66,7 +84,7 @@ export function EnvironmentProvider({ children }: EnvironmentProviderProps) {
 
   const contextValue: EnvironmentContextType = {
     selectedEnvironment,
-    setSelectedEnvironment,
+    setSelectedEnvironment: handleSetSelectedEnvironment,
     environmentVariables,
     environments,
     refreshEnvironments,
