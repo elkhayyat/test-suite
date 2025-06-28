@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -238,16 +238,47 @@ export default function FlowTree({
     setDraggedItem(null);
   };
 
+  // Memoized flow filtering - expensive operations when flows list is large
+  const flowsByProject = useMemo(() => {
+    const projectFlows: { [projectId: string]: TestFlow[] } = {};
+    flows.forEach(flow => {
+      if (flow.projectId && !flow.folderId) {
+        if (!projectFlows[flow.projectId]) {
+          projectFlows[flow.projectId] = [];
+        }
+        projectFlows[flow.projectId].push(flow);
+      }
+    });
+    return projectFlows;
+  }, [flows]);
+
+  const flowsByFolder = useMemo(() => {
+    const folderFlows: { [folderId: string]: TestFlow[] } = {};
+    flows.forEach(flow => {
+      if (flow.folderId) {
+        if (!folderFlows[flow.folderId]) {
+          folderFlows[flow.folderId] = [];
+        }
+        folderFlows[flow.folderId].push(flow);
+      }
+    });
+    return folderFlows;
+  }, [flows]);
+
+  const unassignedFlows = useMemo(() => {
+    return flows.filter(flow => !flow.projectId);
+  }, [flows]);
+
   const getFlowsForProject = (projectId: string) => {
-    return flows.filter(flow => flow.projectId === projectId && !flow.folderId);
+    return flowsByProject[projectId] || [];
   };
 
   const getFlowsForFolder = (folderId: string) => {
-    return flows.filter(flow => flow.folderId === folderId);
+    return flowsByFolder[folderId] || [];
   };
 
   const getUnassignedFlows = () => {
-    return flows.filter(flow => !flow.projectId);
+    return unassignedFlows;
   };
 
   const renderFlow = (flow: TestFlow) => (
@@ -509,7 +540,7 @@ export default function FlowTree({
     );
   };
 
-  const unassignedFlows = getUnassignedFlows();
+  const unassignedFlowsList = getUnassignedFlows();
 
   return (
     <Box onContextMenu={(e) => {
@@ -520,14 +551,14 @@ export default function FlowTree({
     }}>
       {projects.map(renderProject)}
       
-      {unassignedFlows.length > 0 && (
+      {unassignedFlowsList.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Paper elevation={1}>
             <Box sx={{ p: 1.5 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 1 }}>
                 Unassigned Flows
               </Typography>
-              {unassignedFlows.map(renderFlow)}
+              {unassignedFlowsList.map(renderFlow)}
             </Box>
           </Paper>
         </Box>

@@ -7,7 +7,8 @@ import {
   Typography, 
   Button, 
   Box,
-  Fab
+  Fab,
+  CircularProgress
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
@@ -22,6 +23,7 @@ import { TestFlow } from '../../../shared/src/types';
 import { api } from '../services/api';
 import EnvironmentSelector from '../components/EnvironmentSelector';
 import RunResultsDialog from '../components/RunResultsDialog';
+import LoadingOverlay from '../components/LoadingOverlay';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -30,6 +32,9 @@ export default function Dashboard() {
   const [runResultsOpen, setRunResultsOpen] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [currentFlowName, setCurrentFlowName] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [runningFlows, setRunningFlows] = useState<Set<string>>(new Set());
+  const [deletingFlows, setDeletingFlows] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadFlows();
@@ -37,21 +42,31 @@ export default function Dashboard() {
 
   const loadFlows = async () => {
     try {
+      setLoading(true);
       const data = await api.getFlows();
       setFlows(data);
     } catch (error) {
       console.error('Failed to load flows:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleRunFlow = async (flowId: string, flowName: string) => {
     try {
+      setRunningFlows(prev => new Set(prev).add(flowId));
       const { runId } = await api.startRun(flowId, selectedEnvironment);
       setCurrentRunId(runId);
       setCurrentFlowName(flowName);
       setRunResultsOpen(true);
     } catch (error) {
       console.error('Failed to start run:', error);
+    } finally {
+      setRunningFlows(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(flowId);
+        return newSet;
+      });
     }
   };
 
@@ -73,16 +88,25 @@ export default function Dashboard() {
   const handleDeleteFlow = async (flowId: string, flowName: string) => {
     if (window.confirm(`Are you sure you want to delete the flow "${flowName}"?`)) {
       try {
+        setDeletingFlows(prev => new Set(prev).add(flowId));
         await api.deleteFlow(flowId);
         loadFlows(); // Reload flows after deletion
       } catch (error) {
         console.error('Failed to delete flow:', error);
+      } finally {
+        setDeletingFlows(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(flowId);
+          return newSet;
+        });
       }
     }
   };
 
   return (
-    <Box>
+    <Box sx={{ position: 'relative' }}>
+      <LoadingOverlay loading={loading} message="Loading flows..." />
+      
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">
           Test Flows
@@ -150,19 +174,21 @@ export default function Dashboard() {
                 </Button>
                 <Button 
                   size="small" 
-                  startIcon={<PlayArrowIcon />}
+                  startIcon={runningFlows.has(flow.id) ? <CircularProgress size={16} /> : <PlayArrowIcon />}
                   onClick={() => handleRunFlow(flow.id, flow.name)}
                   color="primary"
+                  disabled={runningFlows.has(flow.id)}
                 >
-                  Run
+                  {runningFlows.has(flow.id) ? 'Running...' : 'Run'}
                 </Button>
                 <Button 
                   size="small" 
-                  startIcon={<DeleteIcon />}
+                  startIcon={deletingFlows.has(flow.id) ? <CircularProgress size={16} /> : <DeleteIcon />}
                   onClick={() => handleDeleteFlow(flow.id, flow.name)}
                   color="error"
+                  disabled={deletingFlows.has(flow.id)}
                 >
-                  Delete
+                  {deletingFlows.has(flow.id) ? 'Deleting...' : 'Delete'}
                 </Button>
               </CardActions>
             </Card>

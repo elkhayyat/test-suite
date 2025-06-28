@@ -18,6 +18,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  CircularProgress,
 } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
@@ -30,6 +31,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
 import { Project, Folder } from '../../../shared/src/types';
 import { api } from '../services/api';
+import LoadingOverlay from '../components/LoadingOverlay';
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -44,6 +46,8 @@ export default function Projects() {
     description: '',
   });
   const [importingProjectId, setImportingProjectId] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadProjects();
@@ -51,6 +55,7 @@ export default function Projects() {
 
   const loadProjects = async () => {
     try {
+      setLoading(true);
       const data = await api.getProjects();
       setProjects(data);
       
@@ -68,6 +73,8 @@ export default function Projects() {
       setFolders(foldersMap);
     } catch (error) {
       console.error('Failed to load projects:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -94,6 +101,7 @@ export default function Projects() {
 
   const handleSaveProject = async () => {
     try {
+      setSaving(true);
       if (editingProject) {
         await api.updateProject(editingProject.id, formData);
       } else {
@@ -103,6 +111,8 @@ export default function Projects() {
       loadProjects();
     } catch (error) {
       console.error('Failed to save project:', error);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -223,7 +233,9 @@ export default function Projects() {
   };
 
   return (
-    <Box className="animate-fadeIn">
+    <Box className="animate-fadeIn" sx={{ position: 'relative' }}>
+      <LoadingOverlay loading={loading} message="Loading projects..." />
+      
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box 
@@ -426,11 +438,12 @@ export default function Projects() {
           <Button 
             onClick={handleSaveProject} 
             variant="contained" 
-            disabled={!formData.name}
+            disabled={!formData.name || saving}
             className="gradient-primary"
             sx={{ color: 'white' }}
+            startIcon={saving ? <CircularProgress size={16} /> : undefined}
           >
-            {editingProject ? 'Update' : 'Create'}
+            {saving ? 'Saving...' : (editingProject ? 'Update' : 'Create')}
           </Button>
         </DialogActions>
       </Dialog>

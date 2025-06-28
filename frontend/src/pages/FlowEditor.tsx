@@ -1,17 +1,16 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import ReactFlow, {
   Node,
   Edge,
-  addEdge,
   Background,
   Controls,
   MiniMap,
+  Connection as ReactFlowConnection,
   useNodesState,
   useEdgesState,
-  Connection,
 } from 'react-flow-renderer';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { Box, Paper, Button, TextField, Snackbar, Alert, CircularProgress, Typography, Switch, FormControlLabel, IconButton, Collapse, Divider } from '@mui/material';
+import { Box, Paper, Button, TextField, Snackbar, Alert, CircularProgress, Typography, Switch, FormControlLabel, IconButton, Collapse } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
@@ -34,6 +33,12 @@ import InteractiveConsole from '../components/InteractiveConsole';
 import { ConsoleCommandExecutor } from '../services/ConsoleCommandExecutor';
 import OpenAPIImportDialog from '../components/OpenAPIImportDialog';
 import ApiIcon from '@mui/icons-material/Api';
+import useDebounce from '../hooks/useDebounce';
+import useKeyboardShortcuts, { KeyboardShortcutGroup, commonShortcuts } from '../hooks/useKeyboardShortcuts';
+import KeyboardShortcutsDialog from '../components/KeyboardShortcutsDialog';
+import useFlowUndoRedo from '../hooks/useFlowUndoRedo';
+import useMultiSelection from '../hooks/useMultiSelection';
+import BulkOperationsBar from '../components/BulkOperationsBar';
 
 const nodeTypes = {
   testStep: StepNode,
@@ -54,10 +59,42 @@ export default function FlowEditor() {
   } catch (error) {
     console.error('Failed to load environment context:', error);
   }
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  // Use undo/redo enabled flow state management
+  const flowUndoRedo = useFlowUndoRedo([], []);
+  const { 
+    nodes: undoNodes, 
+    edges: undoEdges, 
+    addNode: undoableAddNode,
+    deleteNode: undoableDeleteNode,
+    updateNode: undoableUpdateNode,
+    moveNode: undoableMoveNode,
+    addEdge: undoableAddEdge,
+    deleteSelectedNodes: undoableDeleteSelectedNodes,
+    resetState: undoableResetState,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    lastUndoAction,
+    lastRedoAction
+  } = flowUndoRedo;
+
+  // Use ReactFlow's native state management for smooth dragging
+  const [nodes, setNodes, onNodesChange] = useNodesState(undoNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(undoEdges);
+
+  // Sync undo/redo state to ReactFlow state
+  useEffect(() => {
+    setNodes(undoNodes);
+  }, [undoNodes, setNodes]);
+
+  useEffect(() => {
+    setEdges(undoEdges);
+  }, [undoEdges, setEdges]);
   const [flowName, setFlowName] = useState('New Flow');
   const [flowDescription, setFlowDescription] = useState('');
+  const [tempFlowName, setTempFlowName] = useState('New Flow');
+  const [tempFlowDescription, setTempFlowDescription] = useState('');
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [clipboard, setClipboard] = useState<TestStep | null>(() => {
     const saved = localStorage.getItem('stepClipboard');
@@ -80,7 +117,6 @@ export default function FlowEditor() {
   });
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialLoadRef = useRef(true);
   const [currentRun, setCurrentRun] = useState<TestRun | null>(null);
   const currentRunRef = useRef<TestRun | null>(null);
@@ -95,6 +131,49 @@ export default function FlowEditor() {
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
   const [commandExecutor] = useState(() => new ConsoleCommandExecutor());
   const [openAPIDialogOpen, setOpenAPIDialogOpen] = useState(false);
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+
+  // Multi-selection for bulk operations
+  const multiSelection = useMultiSelection(nodes, (node) => node.id);
+  const {
+    selectedItems: selectedNodes,
+    isItemSelected,
+    toggleItemById,
+    selectAll,
+    selectNone,
+    hasSelection,
+    selectionCount,
+    isAllSelected,
+  } = multiSelection;
+
+  // Debounced auto-save function
+  const debouncedAutoSave = useDebounce(async () => {
+    if (!autoSaveEnabled || !id || id === 'new') {
+      return;
+    }
+
+    setSaveStatus('saving');
+    try {
+      await handleSave(true);
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+      setSaveStatus('unsaved');
+      setSnackbar({ open: true, message: 'Auto-save failed', severity: 'error' });
+    }
+  }, 2000);
+
+  // Debounced flow name update
+  const debouncedUpdateFlowName = useDebounce((name: string) => {
+    setFlowName(name);
+  }, 300);
+
+  // Debounced flow description update
+  const debouncedUpdateFlowDescription = useDebounce((description: string) => {
+    setFlowDescription(description);
+  }, 300);
 
   useEffect(() => {
     // Check if we're on the new flow path (either by id="new" or pathname="/flows/new")
@@ -106,8 +185,9 @@ export default function FlowEditor() {
       // Reset state for new flow creation
       setFlowName('New Flow');
       setFlowDescription('');
-      setNodes([]);
-      setEdges([]);
+      setTempFlowName('New Flow');
+      setTempFlowDescription('');
+      undoableResetState([], []);
       setSelectedNode(null);
       setStepResults({});
       setCurrentRun(null);
@@ -119,6 +199,16 @@ export default function FlowEditor() {
       }, 100);
     }
   }, [id, searchParams, location.pathname]);
+
+  // Handle debounced flow name updates
+  useEffect(() => {
+    debouncedUpdateFlowName(tempFlowName);
+  }, [tempFlowName, debouncedUpdateFlowName]);
+
+  // Handle debounced flow description updates
+  useEffect(() => {
+    debouncedUpdateFlowDescription(tempFlowDescription);
+  }, [tempFlowDescription, debouncedUpdateFlowDescription]);
 
   // Auto-save effect
   useEffect(() => {
@@ -132,35 +222,12 @@ export default function FlowEditor() {
       return;
     }
 
-    // Clear existing timeout
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current);
-    }
-
-    // Mark as unsaved
+    // Mark as unsaved immediately
     setSaveStatus('unsaved');
 
-    // Set new timeout for auto-save (2 seconds after last change)
-    autoSaveTimeoutRef.current = setTimeout(async () => {
-      setSaveStatus('saving');
-      try {
-        await handleSave(true);
-        setSaveStatus('saved');
-        setLastSaved(new Date());
-      } catch (error) {
-        console.error('Auto-save failed:', error);
-        setSaveStatus('unsaved');
-        setSnackbar({ open: true, message: 'Auto-save failed', severity: 'error' });
-      }
-    }, 2000);
-
-    // Cleanup
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-      }
-    };
-  }, [nodes, edges, flowName, flowDescription, autoSaveEnabled, id]);
+    // Trigger debounced auto-save
+    debouncedAutoSave();
+  }, [nodes, edges, flowName, flowDescription, autoSaveEnabled, id, debouncedAutoSave]);
 
   // Toggle auto-save
   const toggleAutoSave = () => {
@@ -283,7 +350,7 @@ export default function FlowEditor() {
         
         // Add step logs to console
         if (data.result.logs && data.result.logs.length > 0) {
-          setConsoleLogs(prev => [...prev, ...data.result.logs]);
+          setConsoleLogs(prev => [...prev, ...(data.result.logs || [])]);
         }
       }
     });
@@ -306,32 +373,11 @@ export default function FlowEditor() {
 
   // Update nodes with step results
   useEffect(() => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        const stepResult = stepResults[node.data.id];
-        if (stepResult) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              result: stepResult,
-              isRunning: currentRunRef.current?.status === 'running'
-            }
-          };
-        }
-        // Keep existing results visible after run completion (don't clear them)
-        // Results are only cleared when starting a new full flow run
-        // Preserve the existing result and just update isRunning status
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            isRunning: currentRunRef.current?.status === 'running'
-          }
-        };
-      })
-    );
-  }, [stepResults, currentRun, setNodes]);
+    // Note: Node updates with step results are handled via direct state updates
+    // since they don't need to be tracked in undo/redo history
+    // This effect updates nodes with test results - we'll handle this differently
+    // to avoid conflicts with the undo/redo system
+  }, [stepResults, currentRun]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -352,8 +398,8 @@ export default function FlowEditor() {
           id: `${Date.now()}`,
           type: 'testStep',
           position: { 
-            x: selectedNode ? selectedNode.position.x + 50 : 250, 
-            y: selectedNode ? selectedNode.position.y + 50 : 250 
+            x: (selectedNode?.position?.x || 0) + 50, 
+            y: (selectedNode?.position?.y || 0) + 50 
           },
           data: {
             ...clipboard,
@@ -361,15 +407,14 @@ export default function FlowEditor() {
             name: `${clipboard.name} (Copy)`,
           },
         };
-        setNodes((nds) => nds.concat(newNode));
+        undoableAddNode(newNode);
         setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
         setSaveStatus('unsaved');
       }
 
       // Delete (Delete or Backspace)
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNode) {
-        setNodes((nds) => nds.filter((n) => n.id !== selectedNode.id));
-        setEdges((eds) => eds.filter((e) => e.source !== selectedNode.id && e.target !== selectedNode.id));
+        undoableDeleteNode(selectedNode.id);
         setSelectedNode(null);
         setSaveStatus('unsaved');
       }
@@ -379,13 +424,15 @@ export default function FlowEditor() {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selectedNode, clipboard, setNodes, setEdges, setSaveStatus]);
+  }, [selectedNode, clipboard, undoableAddNode, undoableDeleteNode, setSaveStatus]);
 
   const loadFlow = async (flowId: string) => {
     try {
       const flow = await api.getFlow(flowId);
       setFlowName(flow.name);
       setFlowDescription(flow.description || '');
+      setTempFlowName(flow.name);
+      setTempFlowDescription(flow.description || '');
       
       const flowNodes = flow.steps.map((step) => ({
         id: step.id,
@@ -402,8 +449,7 @@ export default function FlowEditor() {
         targetHandle: conn.targetHandle,
       }));
       
-      setNodes(flowNodes);
-      setEdges(flowEdges);
+      undoableResetState(flowNodes, flowEdges);
       
       // Mark initial load complete after a short delay
       setTimeout(() => {
@@ -415,16 +461,36 @@ export default function FlowEditor() {
   };
 
   const onConnect = useCallback(
-    (params: Edge | Connection) => {
-      setEdges((eds) => addEdge(params, eds));
+    (params: Edge | ReactFlowConnection) => {
+      const newEdge: Edge = {
+        id: `${params.source}-${params.target}`,
+        source: params.source,
+        target: params.target,
+        sourceHandle: params.sourceHandle,
+        targetHandle: params.targetHandle,
+      };
+      undoableAddEdge(newEdge);
       setSaveStatus('unsaved');
     },
-    [setEdges, setSaveStatus]
+    [undoableAddEdge, setSaveStatus]
   );
 
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    setSelectedNode(node);
-  }, []);
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    if (selectionMode || event.ctrlKey || event.metaKey) {
+      // Multi-selection mode or ctrl/cmd click
+      event.preventDefault();
+      toggleItemById(node.id);
+      setSelectionMode(true);
+    } else {
+      // Normal single selection
+      setSelectedNode(node);
+      // Clear multi-selection when clicking normally
+      if (hasSelection) {
+        selectNone();
+        setSelectionMode(false);
+      }
+    }
+  }, [selectionMode, toggleItemById, setSelectionMode, hasSelection, selectNone]);
 
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault();
@@ -472,7 +538,12 @@ export default function FlowEditor() {
   }, []);
 
   const handleAddStep = (type: TestStep['type'], position?: { x: number, y: number }) => {
-    let config: HttpStepConfig | BrowserStepConfig | DelayStepConfig | AssertionStepConfig | ConditionStepConfig | SqlStepConfig;
+    let config: HttpStepConfig | BrowserStepConfig | DelayStepConfig | AssertionStepConfig | ConditionStepConfig | SqlStepConfig = {
+      method: 'GET',
+      url: '',
+      headers: {},
+      body: null,
+    } as HttpStepConfig;
     
     // Initialize config based on step type
     switch (type) {
@@ -527,24 +598,21 @@ export default function FlowEditor() {
         config,
       },
     };
-    setNodes((nds) => nds.concat(newNode));
+    undoableAddNode(newNode);
     setSaveStatus('unsaved');
   };
 
-  const handleUpdateNode = (nodeId: string, data: TestStep) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === nodeId) {
-          return { ...node, data };
-        }
-        return node;
-      })
-    );
+  const handleUpdateNode = useCallback((nodeId: string, data: TestStep) => {
+    undoableUpdateNode(nodeId, { data });
     if (selectedNode && selectedNode.id === nodeId) {
-      setSelectedNode({ ...selectedNode, data });
+      setSelectedNode({ 
+        ...selectedNode, 
+        data,
+        position: selectedNode.position || { x: 250, y: 250 } // Ensure position exists
+      });
     }
     setSaveStatus('unsaved');
-  };
+  }, [selectedNode, undoableUpdateNode, setSaveStatus]);
 
   const handleSave = async (isAutoSave = false) => {
     // Get folder and project context from URL params for new flows
@@ -558,7 +626,7 @@ export default function FlowEditor() {
       ...(folderId && { folderId }),
       steps: nodes.map((node) => ({
         ...node.data,
-        position: node.position,
+        position: node.position || { x: 250, y: 250 },
       })),
       connections: edges.map((edge) => ({
         id: edge.id,
@@ -600,7 +668,7 @@ export default function FlowEditor() {
       description: flowDescription,
       steps: nodes.map((node) => ({
         ...node.data,
-        position: node.position,
+        position: node.position || { x: 250, y: 250 },
       })),
       connections: edges.map((edge) => ({
         id: edge.id,
@@ -644,7 +712,6 @@ export default function FlowEditor() {
           position: step.position || { x: 100, y: 100 },
           data: step,
         }));
-        setNodes(importedNodes);
         
         // Update edges
         const importedEdges = flow.connections.map((conn: Connection) => ({
@@ -654,7 +721,8 @@ export default function FlowEditor() {
           sourceHandle: conn.sourceHandle,
           targetHandle: conn.targetHandle,
         }));
-        setEdges(importedEdges);
+        
+        undoableResetState(importedNodes, importedEdges);
         
         setSnackbar({ open: true, message: 'Flow imported successfully', severity: 'success' });
       } catch (error) {
@@ -680,8 +748,8 @@ export default function FlowEditor() {
       data: step,
     }));
 
-    // Add to existing nodes
-    setNodes(prevNodes => [...prevNodes, ...newNodes]);
+    // Add multiple nodes one by one to maintain undo/redo tracking
+    newNodes.forEach(node => undoableAddNode(node));
     
     setSnackbar({ 
       open: true, 
@@ -697,7 +765,7 @@ export default function FlowEditor() {
         await handleSave();
       }
       
-      const { runId } = await api.startRun(id!, selectedEnvironment);
+      await api.startRun(id!, selectedEnvironment);
       setSnackbar({ open: true, message: 'Flow run started - watch the results on each step!', severity: 'success' });
       
       // Don't navigate away - stay here to see real-time results
@@ -725,8 +793,8 @@ export default function FlowEditor() {
         id: `${Date.now()}`,
         type: 'testStep',
         position: {
-          x: contextMenuNode.position.x + 50,
-          y: contextMenuNode.position.y + 50,
+          x: (contextMenuNode.position?.x || 250) + 50,
+          y: (contextMenuNode.position?.y || 250) + 50,
         },
         data: {
           ...clipboard,
@@ -734,11 +802,11 @@ export default function FlowEditor() {
           name: `${clipboard.name} (Copy)`,
         },
       };
-      setNodes((nds) => nds.concat(newNode));
+      undoableAddNode(newNode);
       setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
       setSaveStatus('unsaved');
     }
-  }, [clipboard, contextMenuNode, setNodes, setSaveStatus]);
+  }, [clipboard, contextMenuNode, undoableAddNode, setSaveStatus]);
 
   const handleContextMenuDuplicate = useCallback(() => {
     if (contextMenuNode) {
@@ -746,8 +814,8 @@ export default function FlowEditor() {
         id: `${Date.now()}`,
         type: 'testStep',
         position: {
-          x: contextMenuNode.position.x + 50,
-          y: contextMenuNode.position.y + 50,
+          x: (contextMenuNode.position?.x || 250) + 50,
+          y: (contextMenuNode.position?.y || 250) + 50,
         },
         data: {
           ...(contextMenuNode.data as TestStep),
@@ -755,20 +823,19 @@ export default function FlowEditor() {
           name: `${contextMenuNode.data.name} (Copy)`,
         },
       };
-      setNodes((nds) => nds.concat(newNode));
+      undoableAddNode(newNode);
       setSnackbar({ open: true, message: `Duplicated "${contextMenuNode.data.name}"`, severity: 'success' });
       setSaveStatus('unsaved');
     }
-  }, [contextMenuNode, setNodes, setSaveStatus]);
+  }, [contextMenuNode, undoableAddNode, setSaveStatus]);
 
   const handleContextMenuDelete = useCallback(() => {
     if (contextMenuNode) {
-      setNodes((nds) => nds.filter((n) => n.id !== contextMenuNode.id));
-      setEdges((eds) => eds.filter((e) => e.source !== contextMenuNode.id && e.target !== contextMenuNode.id));
+      undoableDeleteNode(contextMenuNode.id);
       setSelectedNode(null);
       setSaveStatus('unsaved');
     }
-  }, [contextMenuNode, setNodes, setEdges, setSaveStatus]);
+  }, [contextMenuNode, undoableDeleteNode, setSaveStatus]);
 
   const handleContextMenuRun = useCallback(async () => {
     if (!contextMenuNode || !id || id === 'new') {
@@ -781,7 +848,7 @@ export default function FlowEditor() {
       await handleSave();
       
       // Run with selected step(s) - backend will handle running only these steps if supported
-      const { runId } = await api.startRun(id, selectedEnvironment, [contextMenuNode.data.id]);
+      await api.startRun(id, selectedEnvironment, [contextMenuNode.data.id]);
       
       setSnackbar({ 
         open: true, 
@@ -809,7 +876,27 @@ export default function FlowEditor() {
     setConsoleLogs([]);
   };
 
-  const handleConsoleCommand = (command: string) => {
+  // Memoized nodes with step results - expensive operation
+  const nodesWithResults = useMemo(() => {
+    return nodes.map(node => ({
+      ...node,
+      position: node.position || { x: 250, y: 250 }, // Ensure position always exists
+      data: {
+        ...node.data,
+        result: stepResults[node.data.id],
+        isRunning: currentRunRef.current?.status === 'running' && stepResults[node.data.id]?.status === 'running',
+        isSelected: isItemSelected(node.id),
+        selectionMode
+      }
+    }));
+  }, [nodes, stepResults, currentRunRef.current?.status, isItemSelected, selectionMode]);
+
+  // Memoized available steps for StepConfigPanel - expensive operation
+  const availableSteps = useMemo(() => {
+    return nodes.map(node => node.data);
+  }, [nodes]);
+
+  const handleConsoleCommand = useCallback((command: string) => {
     // Special handling for clear command
     if (command.toLowerCase().trim() === 'clear') {
       clearConsole();
@@ -826,7 +913,300 @@ export default function FlowEditor() {
     // Execute command and add logs
     const commandLogs = commandExecutor.executeCommand(command);
     setConsoleLogs(prev => [...prev, ...commandLogs]);
-  };
+  }, [commandExecutor, environmentVariables, stepResults, selectedNode?.id]);
+
+  // Bulk operation handlers
+  const handleBulkDelete = useCallback(() => {
+    if (selectedNodes.length === 0) return;
+    
+    const stepNames = selectedNodes.map(node => node.data.name).join(', ');
+    if (window.confirm(`Are you sure you want to delete ${selectedNodes.length} step(s)?\n\n${stepNames}`)) {
+      undoableDeleteSelectedNodes(selectedNodes.map(node => node.id));
+      selectNone();
+      setSelectedNode(null);
+      setSaveStatus('unsaved');
+      setSnackbar({ 
+        open: true, 
+        message: `Deleted ${selectedNodes.length} step(s)`, 
+        severity: 'success' 
+      });
+    }
+  }, [selectedNodes, undoableDeleteSelectedNodes, selectNone, setSelectedNode, setSaveStatus, setSnackbar]);
+
+  const handleBulkCopy = useCallback(() => {
+    if (selectedNodes.length === 0) return;
+    
+    // For now, copy the first selected item to clipboard
+    // In a more advanced implementation, you might want to support copying multiple items
+    const firstNode = selectedNodes[0];
+    updateClipboard(firstNode.data as TestStep);
+    
+    setSnackbar({ 
+      open: true, 
+      message: `Copied ${selectedNodes.length === 1 ? `"${firstNode.data.name}"` : `${selectedNodes.length} steps (first item to clipboard)`}`, 
+      severity: 'success' 
+    });
+  }, [selectedNodes, updateClipboard, setSnackbar]);
+
+  const handleToggleSelectionMode = useCallback(() => {
+    setSelectionMode(!selectionMode);
+    if (selectionMode) {
+      selectNone();
+    }
+  }, [selectionMode, selectNone]);
+
+  // Define keyboard shortcuts for the FlowEditor
+  const keyboardShortcuts = useMemo(() => [
+    // File operations
+    {
+      ...commonShortcuts.save,
+      action: () => handleSave(),
+      description: 'Save flow',
+    },
+    {
+      ...commonShortcuts.new,
+      action: () => navigate('/flows/new'),
+      description: 'Create new flow',
+    },
+    // Flow operations
+    {
+      key: 'r',
+      ctrlKey: true,
+      metaKey: true,
+      action: () => {
+        if (id && id !== 'new') {
+          handleRunFlow();
+        }
+      },
+      description: 'Run flow',
+      enabled: id !== 'new',
+    },
+    // Step operations
+    {
+      ...commonShortcuts.copy,
+      action: () => {
+        if (selectedNode) {
+          updateClipboard(selectedNode.data as TestStep);
+          setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
+        }
+      },
+      description: 'Copy selected step',
+      enabled: !!selectedNode,
+    },
+    {
+      ...commonShortcuts.paste,
+      action: () => {
+        if (clipboard) {
+          const newNode: Node = {
+            id: `${Date.now()}`,
+            type: 'testStep',
+            position: { 
+              x: (selectedNode?.position?.x || 0) + 50, 
+              y: (selectedNode?.position?.y || 0) + 50 
+            },
+            data: {
+              ...clipboard,
+              id: `${Date.now()}`,
+              name: `${clipboard.name} (Copy)`,
+            },
+          };
+          undoableAddNode(newNode);
+          setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+          setSaveStatus('unsaved');
+        }
+      },
+      description: 'Paste step',
+      enabled: !!clipboard,
+    },
+    {
+      ...commonShortcuts.delete,
+      action: () => {
+        if (selectedNode) {
+          undoableDeleteNode(selectedNode.id);
+          setSelectedNode(null);
+          setSaveStatus('unsaved');
+        }
+      },
+      description: 'Delete selected step',
+      enabled: !!selectedNode,
+    },
+    // Quick step creation
+    {
+      key: '1',
+      altKey: true,
+      action: () => handleAddStep('http'),
+      description: 'Add HTTP step',
+    },
+    {
+      key: '2',
+      altKey: true,
+      action: () => handleAddStep('browser'),
+      description: 'Add Browser step',
+    },
+    {
+      key: '3',
+      altKey: true,
+      action: () => handleAddStep('assertion'),
+      description: 'Add Assertion step',
+    },
+    {
+      key: '4',
+      altKey: true,
+      action: () => handleAddStep('delay'),
+      description: 'Add Delay step',
+    },
+    {
+      key: '5',
+      altKey: true,
+      action: () => handleAddStep('sql'),
+      description: 'Add SQL step',
+    },
+    // Console operations
+    {
+      key: '`',
+      ctrlKey: true,
+      action: () => setConsoleOpen(!consoleOpen),
+      description: 'Toggle console',
+    },
+    // Selection operations
+    {
+      ...commonShortcuts.selectAll,
+      action: () => {
+        if (nodes.length > 0) {
+          selectAll();
+          setSelectionMode(true);
+          setSnackbar({ 
+            open: true, 
+            message: `Selected all ${nodes.length} steps`, 
+            severity: 'info' 
+          });
+        }
+      },
+      description: 'Select all steps',
+      enabled: nodes.length > 0,
+    },
+    {
+      key: 's',
+      altKey: true,
+      action: handleToggleSelectionMode,
+      description: 'Toggle selection mode',
+    },
+    // UI operations
+    {
+      ...commonShortcuts.escape,
+      action: () => {
+        if (hasSelection) {
+          selectNone();
+          setSelectionMode(false);
+        } else {
+          setSelectedNode(null);
+          setContextMenu(null);
+          setOpenAPIDialogOpen(false);
+          setShortcutsDialogOpen(false);
+        }
+      },
+      description: 'Close dialogs / Clear selection',
+    },
+    // Undo/Redo
+    {
+      ...commonShortcuts.undo,
+      action: () => {
+        if (canUndo) {
+          undo();
+          setSnackbar({ 
+            open: true, 
+            message: `Undid: ${lastUndoAction?.description}`, 
+            severity: 'info' 
+          });
+        }
+      },
+      description: 'Undo last action',
+      enabled: canUndo,
+    },
+    {
+      ...commonShortcuts.redo,
+      action: () => {
+        if (canRedo) {
+          redo();
+          setSnackbar({ 
+            open: true, 
+            message: `Redid: ${lastRedoAction?.description}`, 
+            severity: 'info' 
+          });
+        }
+      },
+      description: 'Redo last action',
+      enabled: canRedo,
+    },
+    // Help
+    {
+      key: '?',
+      action: () => setShortcutsDialogOpen(true),
+      description: 'Show keyboard shortcuts',
+    },
+  ], [
+    selectedNode, clipboard, id, handleSave, navigate, handleRunFlow, updateClipboard, 
+    setSnackbar, undoableAddNode, undoableDeleteNode, setSaveStatus, handleAddStep, consoleOpen, 
+    setConsoleOpen, setSelectedNode, setContextMenu, setOpenAPIDialogOpen, setShortcutsDialogOpen,
+    canUndo, canRedo, undo, redo, lastUndoAction, lastRedoAction, nodes, selectAll, 
+    setSelectionMode, hasSelection, selectNone, handleToggleSelectionMode
+  ]);
+
+  // Keyboard shortcut groups for help dialog
+  const shortcutGroups: KeyboardShortcutGroup[] = useMemo(() => [
+    {
+      name: 'File Operations',
+      shortcuts: keyboardShortcuts.filter(s => 
+        ['Save flow', 'Create new flow'].includes(s.description)
+      ),
+    },
+    {
+      name: 'Flow Operations',
+      shortcuts: keyboardShortcuts.filter(s => 
+        ['Run flow'].includes(s.description)
+      ),
+    },
+    {
+      name: 'Step Operations',
+      shortcuts: keyboardShortcuts.filter(s => 
+        ['Copy selected step', 'Paste step', 'Delete selected step'].includes(s.description)
+      ),
+    },
+    {
+      name: 'Quick Step Creation',
+      shortcuts: keyboardShortcuts.filter(s => 
+        s.description.startsWith('Add ') && s.description.endsWith(' step')
+      ),
+    },
+    {
+      name: 'Edit Operations',
+      shortcuts: keyboardShortcuts.filter(s => 
+        ['Undo last action', 'Redo last action'].includes(s.description)
+      ),
+    },
+    {
+      name: 'Selection Operations',
+      shortcuts: keyboardShortcuts.filter(s => 
+        ['Select all steps', 'Toggle selection mode'].includes(s.description)
+      ),
+    },
+    {
+      name: 'Interface',
+      shortcuts: keyboardShortcuts.filter(s => 
+        ['Toggle console', 'Close dialogs / Clear selection', 'Show keyboard shortcuts'].includes(s.description)
+      ),
+    },
+  ], [keyboardShortcuts]);
+
+  // Register keyboard shortcuts
+  useKeyboardShortcuts(keyboardShortcuts);
+
+  // Custom handler for node drag end to sync with undo/redo system
+  const handleNodeDragStop = useCallback((event: React.MouseEvent, node: Node) => {
+    // Update undo/redo system when drag ends
+    undoableMoveNode(node.id, node.position);
+  }, [undoableMoveNode]);
+
 
   return (
     <Box sx={{ 
@@ -838,18 +1218,18 @@ export default function FlowEditor() {
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <TextField
             label="Flow Name"
-            value={flowName}
+            value={tempFlowName}
             onChange={(e) => {
-              setFlowName(e.target.value);
+              setTempFlowName(e.target.value);
               setSaveStatus('unsaved');
             }}
             size="small"
           />
           <TextField
             label="Description"
-            value={flowDescription}
+            value={tempFlowDescription}
             onChange={(e) => {
-              setFlowDescription(e.target.value);
+              setTempFlowDescription(e.target.value);
               setSaveStatus('unsaved');
             }}
             size="small"
@@ -979,25 +1359,22 @@ export default function FlowEditor() {
         
         <Box sx={{ flex: 1 }}>
           <ReactFlow
-            nodes={nodes.map(node => ({
-              ...node,
-              data: {
-                ...node.data,
-                result: stepResults[node.data.id],
-                isRunning: currentRunRef.current?.status === 'running' && stepResults[node.data.id]?.status === 'running'
-              }
-            }))}
+            nodes={nodesWithResults}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             onNodeContextMenu={onNodeContextMenu}
+            onNodeDragStop={handleNodeDragStop}
             onNodesDelete={onNodesDelete}
             onDragOver={onDragOver}
             onDrop={onDrop}
             nodeTypes={nodeTypes}
             deleteKeyCode="Delete"
+            nodesDraggable={true}
+            nodesConnectable={true}
+            elementsSelectable={true}
           >
             <Controls />
             <MiniMap />
@@ -1018,7 +1395,7 @@ export default function FlowEditor() {
               step={selectedNode.data}
               onUpdate={(updatedStep) => handleUpdateNode(selectedNode.id, updatedStep)}
               onClose={() => setSelectedNode(null)}
-              availableSteps={nodes.map(node => node.data)}
+              availableSteps={availableSteps}
             />
           </Box>
         )}
@@ -1106,6 +1483,26 @@ export default function FlowEditor() {
         open={openAPIDialogOpen}
         onClose={() => setOpenAPIDialogOpen(false)}
         onImport={handleOpenAPIImport}
+      />
+      
+      <KeyboardShortcutsDialog
+        open={shortcutsDialogOpen}
+        onClose={() => setShortcutsDialogOpen(false)}
+        shortcutGroups={shortcutGroups}
+      />
+      
+      {/* Bulk Operations Bar */}
+      <BulkOperationsBar
+        selectionCount={selectionCount}
+        onSelectAll={selectAll}
+        onClearSelection={() => {
+          selectNone();
+          setSelectionMode(false);
+        }}
+        onBulkDelete={handleBulkDelete}
+        onBulkCopy={handleBulkCopy}
+        isAllSelected={isAllSelected}
+        hasItems={nodes.length > 0}
       />
     </Box>
   );
