@@ -62,17 +62,23 @@ export default function Layout({ children }: LayoutProps) {
       setFlows(flowsData || []);
       setProjects(projectsData || []);
       
-      // Load folders for each project
-      const foldersMap: { [projectId: string]: Folder[] } = {};
-      for (const project of projectsData || []) {
+      // Load folders for all projects in parallel
+      const folderPromises = (projectsData || []).map(async (project) => {
         try {
           const projectFolders = await api.getProjectFolders(project.id);
-          foldersMap[project.id] = projectFolders || [];
+          return { projectId: project.id, folders: projectFolders || [] };
         } catch (error) {
           console.error(`Failed to load folders for project ${project.id}:`, error);
-          foldersMap[project.id] = [];
+          return { projectId: project.id, folders: [] };
         }
-      }
+      });
+      
+      const folderResults = await Promise.all(folderPromises);
+      const foldersMap = folderResults.reduce((acc, { projectId, folders }) => {
+        acc[projectId] = folders;
+        return acc;
+      }, {} as { [projectId: string]: Folder[] });
+      
       setFolders(foldersMap);
     } catch (error) {
       console.error('Failed to load data for explorer:', error);
@@ -86,7 +92,6 @@ export default function Layout({ children }: LayoutProps) {
   // Refresh data when navigating to key pages or flow pages
   useEffect(() => {
     if (location.pathname === '/' || location.pathname === '/projects') {
-      console.log('Refreshing explorer data due to navigation to:', location.pathname);
       loadData();
     }
   }, [location.pathname]);

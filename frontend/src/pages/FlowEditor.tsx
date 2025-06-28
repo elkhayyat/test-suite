@@ -22,7 +22,7 @@ import CloudOffIcon from '@mui/icons-material/CloudOff';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import { TestFlow, TestStep, TestRun, StepResult, ConsoleLog } from '../../../shared/src/types';
+import { TestFlow, TestStep, TestRun, StepResult, ConsoleLog, HttpStepConfig, BrowserStepConfig, DelayStepConfig, AssertionStepConfig, ConditionStepConfig, SqlStepConfig, Connection } from '../../../shared/src/types';
 import { api } from '../services/api';
 import StepPanel from '../components/StepPanel';
 import StepNode from '../components/StepNode';
@@ -40,12 +40,10 @@ const nodeTypes = {
 };
 
 export default function FlowEditor() {
-  console.log('FlowEditor component rendering...');
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  console.log('FlowEditor params:', { id, searchParams: Object.fromEntries(searchParams), pathname: location.pathname });
   
   let selectedEnvironment = '';
   let environmentVariables = {};
@@ -53,7 +51,6 @@ export default function FlowEditor() {
     const envContext = useEnvironment();
     selectedEnvironment = envContext.selectedEnvironment;
     environmentVariables = envContext.environmentVariables;
-    console.log('Environment context loaded successfully');
   } catch (error) {
     console.error('Failed to load environment context:', error);
   }
@@ -100,17 +97,13 @@ export default function FlowEditor() {
   const [openAPIDialogOpen, setOpenAPIDialogOpen] = useState(false);
 
   useEffect(() => {
-    console.log('FlowEditor mounted/updated with:', { id, searchParams: Object.fromEntries(searchParams), pathname: location.pathname });
-    
     // Check if we're on the new flow path (either by id="new" or pathname="/flows/new")
     const isNewFlow = id === 'new' || location.pathname === '/flows/new';
     
     if (id && id !== 'new' && !isNewFlow) {
-      console.log('Loading existing flow:', id);
       loadFlow(id);
     } else if (isNewFlow) {
       // Reset state for new flow creation
-      console.log('Resetting state for new flow (isNewFlow=true)');
       setFlowName('New Flow');
       setFlowDescription('');
       setNodes([]);
@@ -199,24 +192,19 @@ export default function FlowEditor() {
   // WebSocket event listeners for real-time test results
   useEffect(() => {
     if (!socket) {
-      console.log('Socket not available yet');
       return;
     }
 
-    console.log('Setting up socket event listeners');
-
     socket.on('connect', () => {
-      console.log('Socket connected successfully');
+      // Socket connected
     });
 
     socket.on('disconnect', () => {
-      console.log('Socket disconnected');
+      // Socket disconnected
     });
 
     socket.on('run:started', (run: TestRun) => {
-      console.log('Received run:started event:', run);
       if (run.flowId === id) {
-        console.log('Run started for current flow:', run);
         setCurrentRun(run);
         currentRunRef.current = run;
         
@@ -230,34 +218,26 @@ export default function FlowEditor() {
     });
 
     socket.on('run:updated', (run: TestRun) => {
-      console.log('Received run:updated event:', run);
       if (run.flowId === id && currentRunRef.current?.id === run.id) {
-        console.log('Updating run for current flow:', run);
         setCurrentRun(run);
         currentRunRef.current = run;
         
         // Update step results - merge with existing results for single step runs
         if (run.selectedSteps && run.selectedSteps.length > 0) {
-          console.log('Single step run - merging results');
           // Single step run - merge new results with existing ones
           setStepResults(prev => {
             const updated = { ...prev };
             run.results.forEach(result => {
-              console.log('Adding step result:', result);
               updated[result.stepId] = result;
             });
-            console.log('Updated step results:', updated);
             return updated;
           });
         } else {
-          console.log('Full flow run - replacing all results');
           // Full flow run - replace all results
           const results: { [stepId: string]: StepResult } = {};
           run.results.forEach(result => {
-            console.log('Adding step result:', result);
             results[result.stepId] = result;
           });
-          console.log('Updated step results:', results);
           setStepResults(results);
         }
         
@@ -271,19 +251,11 @@ export default function FlowEditor() {
     });
 
     socket.on('step:updated', (data: { runId: string; stepId: string; result: StepResult }) => {
-      console.log('Received step:updated event:', data);
-      console.log('Current run ref:', currentRunRef.current);
-      console.log('Run ID comparison:', currentRunRef.current?.id, '===', data.runId, '?', currentRunRef.current?.id === data.runId);
       if (currentRunRef.current?.id === data.runId) {
-        console.log('Updating step result for current run:', data);
-        setStepResults(prev => {
-          const updated = {
-            ...prev,
-            [data.stepId]: data.result
-          };
-          console.log('Updated step results from step:updated:', updated);
-          return updated;
-        });
+        setStepResults(prev => ({
+          ...prev,
+          [data.stepId]: data.result
+        }));
         
         // Show notification for step completion/failure
         if (data.result.status === 'failed') {
@@ -334,12 +306,10 @@ export default function FlowEditor() {
 
   // Update nodes with step results
   useEffect(() => {
-    console.log('Updating nodes with step results:', stepResults);
     setNodes((nds) =>
       nds.map((node) => {
         const stepResult = stepResults[node.data.id];
         if (stepResult) {
-          console.log(`Updating node ${node.data.id} with result:`, stepResult);
           return {
             ...node,
             data: {
@@ -352,7 +322,6 @@ export default function FlowEditor() {
         // Keep existing results visible after run completion (don't clear them)
         // Results are only cleared when starting a new full flow run
         // Preserve the existing result and just update isRunning status
-        console.log(`Preserving existing result for node ${node.data.id}:`, node.data.result);
         return {
           ...node,
           data: {
@@ -503,7 +472,7 @@ export default function FlowEditor() {
   }, []);
 
   const handleAddStep = (type: TestStep['type'], position?: { x: number, y: number }) => {
-    let config: any = {};
+    let config: HttpStepConfig | BrowserStepConfig | DelayStepConfig | AssertionStepConfig | ConditionStepConfig | SqlStepConfig;
     
     // Initialize config based on step type
     switch (type) {
@@ -581,7 +550,6 @@ export default function FlowEditor() {
     // Get folder and project context from URL params for new flows
     const folderId = searchParams.get('folderId');
     const projectId = searchParams.get('projectId');
-    console.log('handleSave - URL params:', { folderId, projectId, isAutoSave });
     
     const flow: Partial<TestFlow> = {
       name: flowName,
@@ -616,7 +584,6 @@ export default function FlowEditor() {
       setLastSaved(new Date());
       
       // Trigger explorer refresh
-      console.log('Triggering explorer refresh after flow save');
       window.dispatchEvent(new Event('refreshExplorer'));
     } catch (error) {
       console.error('Failed to save flow:', error);
@@ -680,7 +647,7 @@ export default function FlowEditor() {
         setNodes(importedNodes);
         
         // Update edges
-        const importedEdges = flow.connections.map((conn: any) => ({
+        const importedEdges = flow.connections.map((conn: Connection) => ({
           id: conn.id,
           source: conn.source,
           target: conn.target,

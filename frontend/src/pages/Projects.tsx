@@ -54,12 +54,18 @@ export default function Projects() {
       const data = await api.getProjects();
       setProjects(data);
       
+      // Load folders for all projects in parallel
+      const folderPromises = data.map(project => 
+        api.getProjectFolders(project.id).then(folders => ({ projectId: project.id, folders }))
+      );
       
-      // Load folders for each project
-      for (const project of data) {
-        const projectFolders = await api.getProjectFolders(project.id);
-        setFolders(prev => ({ ...prev, [project.id]: projectFolders }));
-      }
+      const folderResults = await Promise.all(folderPromises);
+      const foldersMap = folderResults.reduce((acc, { projectId, folders }) => {
+        acc[projectId] = folders;
+        return acc;
+      }, {} as { [projectId: string]: Folder[] });
+      
+      setFolders(foldersMap);
     } catch (error) {
       console.error('Failed to load projects:', error);
     }

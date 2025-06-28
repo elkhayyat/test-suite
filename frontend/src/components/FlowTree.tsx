@@ -120,15 +120,12 @@ export default function FlowTree({
   };
 
   const handleFolderMenuOpen = (event: React.MouseEvent, folderId: string) => {
-    console.log('Folder context menu triggered for:', folderId, 'button:', event.button, 'type:', event.type);
-    
     // Always prevent default to stop browser context menu
     event.preventDefault();
     event.stopPropagation();
     
     // Ensure it's a right-click (button 2) or context menu event
     if (event.button === 2 || event.type === 'contextmenu') {
-      console.log('Opening folder context menu for:', folderId);
       setFolderAnchorEl(prev => ({ ...prev, [folderId]: event.currentTarget as HTMLElement }));
       return false; // Additional prevention
     }
@@ -141,15 +138,12 @@ export default function FlowTree({
   };
 
   const handleProjectMenuOpen = (event: React.MouseEvent, projectId: string) => {
-    console.log('Project context menu triggered for:', projectId, 'button:', event.button, 'type:', event.type);
-    
     // Always prevent default to stop browser context menu
     event.preventDefault();
     event.stopPropagation();
     
     // Ensure it's a right-click (button 2) or context menu event
     if (event.button === 2 || event.type === 'contextmenu') {
-      console.log('Opening project context menu for:', projectId);
       setProjectAnchorEl(prev => ({ ...prev, [projectId]: event.currentTarget as HTMLElement }));
       return false; // Additional prevention
     }
@@ -354,7 +348,6 @@ export default function FlowTree({
           onClose={() => handleFolderMenuClose(folder.id)}
         >
           <MenuItem onClick={() => {
-            console.log('Folder Create Flow clicked:', { folderId: folder.id, projectId: folder.projectId });
             onFolderCreateFlow(folder.id, folder.projectId);
             handleFolderMenuClose(folder.id);
           }}>
@@ -462,7 +455,6 @@ export default function FlowTree({
             onClose={() => handleProjectMenuClose(project.id)}
           >
             <MenuItem onClick={() => {
-              console.log('Project Create Flow clicked:', { projectId: project.id });
               onProjectCreateFlow(project.id);
               handleProjectMenuClose(project.id);
             }}>
