@@ -87,8 +87,9 @@ export default function FlowEditor() {
   } = flowUndoRedo;
 
   // Use ReactFlow's native state management for smooth dragging
-  const [nodes, setNodes, onNodesChangeNative] = useNodesState(undoNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(undoEdges);
+  // Initialize with empty state since we'll load content separately
+  const [nodes, setNodes, onNodesChangeNative] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   
   // Custom nodes change handler that syncs position changes to undo system
   const onNodesChange = useCallback((changes: any[]) => {
@@ -99,28 +100,12 @@ export default function FlowEditor() {
     // We'll sync on drag end via handleNodeDragStop
   }, [onNodesChangeNative]);
 
-  // Sync undo/redo state to ReactFlow state only when explicitly undoing/redoing
-  // Don't sync on every change to avoid conflicts with drag operations
+  // Track undo/redo actions to sync state only when they happen
   const lastUndoActionRef = useRef(lastUndoAction);
   const lastRedoActionRef = useRef(lastRedoAction);
-  const hasInitialSyncRef = useRef(false);
   
-  // Initial sync when component mounts or when flow is reset
+  // Only sync FROM undo system when explicit undo/redo happens
   useEffect(() => {
-    if (!hasInitialSyncRef.current) {
-      setNodes(undoNodes);
-      setEdges(undoEdges);
-      hasInitialSyncRef.current = true;
-    }
-  }, [undoNodes, undoEdges, setNodes, setEdges]);
-  
-  // Reset sync flag when flow is reset (nodes/edges completely change)
-  useEffect(() => {
-    hasInitialSyncRef.current = false;
-  }, [id]); // Reset when flow ID changes
-  
-  useEffect(() => {
-    // Only sync when undo/redo actually happened
     if (lastUndoAction && lastUndoAction !== lastUndoActionRef.current) {
       setNodes(undoNodes);
       setEdges(undoEdges);
@@ -129,7 +114,6 @@ export default function FlowEditor() {
   }, [lastUndoAction, undoNodes, undoEdges, setNodes, setEdges]);
   
   useEffect(() => {
-    // Only sync when undo/redo actually happened
     if (lastRedoAction && lastRedoAction !== lastRedoActionRef.current) {
       setNodes(undoNodes);
       setEdges(undoEdges);
@@ -286,6 +270,10 @@ export default function FlowEditor() {
     } else if (isNewFlow) {
       // Reset state for new flow creation
       flowEditActions.resetFlow('New Flow', '');
+      // Set ReactFlow state directly first
+      setNodes([]);
+      setEdges([]);
+      // Then update undo system
       undoableResetState([], []);
       uiActions.setSelectedNode(null);
       testExecutionActions.clearStepResults();
@@ -495,7 +483,13 @@ export default function FlowEditor() {
       );
       
       measureSync('resetFlowState', 
-        () => undoableResetState(flowNodes, flowEdges),
+        () => {
+          // Set ReactFlow state directly first
+          setNodes(flowNodes);
+          setEdges(flowEdges);
+          // Then update undo system
+          undoableResetState(flowNodes, flowEdges);
+        },
         { nodeCount: flowNodes.length, edgeCount: flowEdges.length }
       );
       
@@ -792,6 +786,10 @@ export default function FlowEditor() {
           targetHandle: conn.targetHandle,
         }));
         
+        // Set ReactFlow state directly first
+        setNodes(importedNodes);
+        setEdges(importedEdges);
+        // Then update undo system
         undoableResetState(importedNodes, importedEdges);
         
         setSnackbar({ open: true, message: 'Flow imported successfully', severity: 'success' });
