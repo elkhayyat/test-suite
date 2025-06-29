@@ -126,6 +126,10 @@ export class MongoDB {
     // Project teams indexes
     await this.collections.projectTeams.createIndex({ projectId: 1, teamId: 1 }, { unique: true });
     await this.collections.projectTeams.createIndex({ teamId: 1 });
+    
+    // Project OpenAPI schemas indexes
+    await this.collections.projectOpenAPISchemas.createIndex({ projectId: 1 });
+    await this.collections.projectOpenAPISchemas.createIndex({ name: 1, projectId: 1 }, { unique: true });
   }
 
   private async initializeDefaultData(): Promise<void> {
