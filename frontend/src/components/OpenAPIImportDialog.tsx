@@ -22,16 +22,21 @@ import {
   MenuItem,
   Tabs,
   Tab,
+  FormControlLabel,
+  Checkbox as MuiCheckbox,
+  Divider,
 } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LinkIcon from '@mui/icons-material/Link';
 import { parseOpenAPISchema, generateStepsFromOpenAPI, ParsedOpenAPI } from '../../../shared/src/openApiParser';
 import { TestStep } from '../../../shared/src/types';
+import { api } from '../services/api';
 
 interface OpenAPIImportDialogProps {
   open: boolean;
   onClose: () => void;
   onImport: (steps: TestStep[]) => void;
+  projectId?: string; // Optional: if provided, show option to save schema
 }
 
 interface TabPanelProps {
@@ -49,7 +54,7 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-export default function OpenAPIImportDialog({ open, onClose, onImport }: OpenAPIImportDialogProps) {
+export default function OpenAPIImportDialog({ open, onClose, onImport, projectId }: OpenAPIImportDialogProps) {
   const [activeTab, setActiveTab] = useState(0);
   const [schemaText, setSchemaText] = useState('');
   const [schemaUrl, setSchemaUrl] = useState('');
@@ -58,6 +63,9 @@ export default function OpenAPIImportDialog({ open, onClose, onImport }: OpenAPI
   const [parsedAPI, setParsedAPI] = useState<ParsedOpenAPI | null>(null);
   const [selectedOperations, setSelectedOperations] = useState<string[]>([]);
   const [baseUrlOverride, setBaseUrlOverride] = useState('');
+  const [saveSchema, setSaveSchema] = useState(false);
+  const [schemaName, setSchemaName] = useState('');
+  const [schemaDescription, setSchemaDescription] = useState('');
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -113,6 +121,10 @@ export default function OpenAPIImportDialog({ open, onClose, onImport }: OpenAPI
       if (parsed.servers.length > 0) {
         setBaseUrlOverride(parsed.servers[0]);
       }
+      
+      // Auto-populate schema name
+      setSchemaName(parsed.title || '');
+      setSchemaDescription('');
     } catch (err) {
       setError(`Failed to parse schema: ${(err as Error).message}`);
       setParsedAPI(null);
@@ -140,17 +152,35 @@ export default function OpenAPIImportDialog({ open, onClose, onImport }: OpenAPI
     setSelectedOperations([]);
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!parsedAPI) return;
 
-    const steps = generateStepsFromOpenAPI(
-      parsedAPI,
-      selectedOperations,
-      baseUrlOverride || undefined
-    );
+    try {
+      // Save schema if requested and projectId is available
+      if (saveSchema && projectId && schemaName.trim()) {
+        const schemaData = {
+          name: schemaName.trim(),
+          description: schemaDescription.trim() || undefined,
+          version: parsedAPI.version,
+          title: parsedAPI.title,
+          baseUrl: baseUrlOverride || undefined,
+          schema: JSON.parse(schemaText), // Use original schema text
+        };
 
-    onImport(steps);
-    handleClose();
+        await api.createProjectOpenAPISchema(projectId, schemaData);
+      }
+
+      const steps = generateStepsFromOpenAPI(
+        parsedAPI,
+        selectedOperations,
+        baseUrlOverride || undefined
+      );
+
+      onImport(steps);
+      handleClose();
+    } catch (err) {
+      setError(`Failed to save schema: ${(err as Error).message}`);
+    }
   };
 
   const handleClose = () => {
@@ -161,6 +191,9 @@ export default function OpenAPIImportDialog({ open, onClose, onImport }: OpenAPI
     setParsedAPI(null);
     setSelectedOperations([]);
     setBaseUrlOverride('');
+    setSaveSchema(false);
+    setSchemaName('');
+    setSchemaDescription('');
     onClose();
   };
 
@@ -260,6 +293,46 @@ export default function OpenAPIImportDialog({ open, onClose, onImport }: OpenAPI
               />
             )}
 
+            {projectId && (
+              <>
+                <Divider sx={{ my: 2 }} />
+                <FormControlLabel
+                  control={
+                    <MuiCheckbox
+                      checked={saveSchema}
+                      onChange={(e) => setSaveSchema(e.target.checked)}
+                    />
+                  }
+                  label="Save schema to project for reuse"
+                />
+                {saveSchema && (
+                  <Box sx={{ mt: 2 }}>
+                    <TextField
+                      fullWidth
+                      label="Schema Name"
+                      value={schemaName}
+                      onChange={(e) => setSchemaName(e.target.value)}
+                      placeholder="My API Schema"
+                      margin="normal"
+                      size="small"
+                      required
+                    />
+                    <TextField
+                      fullWidth
+                      label="Description (Optional)"
+                      value={schemaDescription}
+                      onChange={(e) => setSchemaDescription(e.target.value)}
+                      placeholder="Description of this API schema"
+                      margin="normal"
+                      size="small"
+                      multiline
+                      rows={2}
+                    />
+                  </Box>
+                )}
+              </>
+            )}
+
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2, mb: 1 }}>
               <Typography variant="subtitle1">
                 Select Operations ({selectedOperations.length}/{parsedAPI.operations.length})
@@ -325,7 +398,11 @@ export default function OpenAPIImportDialog({ open, onClose, onImport }: OpenAPI
         <Button
           onClick={handleImport}
           variant="contained"
-          disabled={!parsedAPI || selectedOperations.length === 0}
+          disabled={
+            !parsedAPI || 
+            selectedOperations.length === 0 || 
+            (saveSchema && !schemaName.trim())
+          }
         >
           Import {selectedOperations.length} Operation{selectedOperations.length !== 1 ? 's' : ''}
         </Button>

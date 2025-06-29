@@ -29,9 +29,11 @@ import AddIcon from '@mui/icons-material/Add';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
+import ApiIcon from '@mui/icons-material/Api';
 import { Project, Folder } from '../../../shared/src/types';
 import { api } from '../services/api';
 import LoadingOverlay from '../components/LoadingOverlay';
+import ProjectOpenAPIDialog from '../components/ProjectOpenAPIDialog';
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -48,6 +50,8 @@ export default function Projects() {
   const [, setImportingProjectId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [openApiDialogOpen, setOpenApiDialogOpen] = useState(false);
+  const [selectedProjectForApi, setSelectedProjectForApi] = useState<Project | null>(null);
 
   useEffect(() => {
     loadProjects();
@@ -232,6 +236,16 @@ export default function Projects() {
     setImportingProjectId('');
   };
 
+  const handleOpenApiDialog = (project: Project) => {
+    setSelectedProjectForApi(project);
+    setOpenApiDialogOpen(true);
+  };
+
+  const handleCloseApiDialog = () => {
+    setOpenApiDialogOpen(false);
+    setSelectedProjectForApi(null);
+  };
+
   return (
     <Box className="animate-fadeIn" sx={{ position: 'relative' }}>
       <LoadingOverlay open={loading} message="Loading projects..." />
@@ -397,6 +411,14 @@ export default function Projects() {
                 </Button>
                 <Button
                   size="small"
+                  startIcon={<ApiIcon />}
+                  onClick={() => handleOpenApiDialog(project)}
+                  sx={{ color: '#9c27b0' }}
+                >
+                  Schemas
+                </Button>
+                <Button
+                  size="small"
                   startIcon={<DeleteIcon />}
                   onClick={() => handleDeleteProject(project.id)}
                   sx={{ color: '#f5576c' }}
@@ -495,6 +517,17 @@ export default function Projects() {
           onChange={(e) => handleImportFile(e, project.id)}
         />
       ))}
+
+      {/* OpenAPI Schema Dialog */}
+      {selectedProjectForApi && (
+        <ProjectOpenAPIDialog
+          open={openApiDialogOpen}
+          onClose={handleCloseApiDialog}
+          projectId={selectedProjectForApi.id}
+          projectName={selectedProjectForApi.name}
+          projectFolders={folders[selectedProjectForApi.id] || []}
+        />
+      )}
     </Box>
   );
 }
