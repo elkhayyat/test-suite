@@ -7,7 +7,11 @@
   "scripts": {
     "build": "tsc"
   },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
   "devDependencies": {
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "@types/uuid": "^9.0.0"
   }
 }
