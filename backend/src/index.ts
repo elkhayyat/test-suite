@@ -15,25 +15,49 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: 'http://localhost:3000',
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
     methods: ['GET', 'POST']
   }
 });
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+}));
 app.use(express.json());
 
 const environmentStore = new EnvironmentStore();
 const testRunner = new TestRunner(io, flowStore, environmentStore);
 
-app.use('/api/flows', flowRoutes);
-app.use('/api/runs', runRoutes(testRunner));
-app.use('/api/environments', environmentRoutes);
-app.use('/api/projects', projectRoutes);
-app.use('/api/organizations', organizationRoutes);
+// Health check endpoints
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Test Flow Suite API',
+    status: 'running',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+const API_BASE_PATH = process.env.API_BASE_PATH || '/api';
+
+app.use(`${API_BASE_PATH}/flows`, flowRoutes);
+app.use(`${API_BASE_PATH}/runs`, runRoutes(testRunner));
+app.use(`${API_BASE_PATH}/environments`, environmentRoutes);
+app.use(`${API_BASE_PATH}/projects`, projectRoutes);
+app.use(`${API_BASE_PATH}/organizations`, organizationRoutes);
 
 // Proxy endpoint for external API requests (CORS workaround)
-app.get('/api/proxy', async (req, res) => {
+app.get(`${API_BASE_PATH}/proxy`, async (req, res) => {
   const { url } = req.query;
   
   if (!url || typeof url !== 'string') {
