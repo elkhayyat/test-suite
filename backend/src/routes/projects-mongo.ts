@@ -306,5 +306,95 @@ export const projectRoutes = (projectStore: ProjectStore, flowStore?: FlowStore,
     }
   });
 
+  // OpenAPI Schema routes
+  router.get('/:id/openapi-schemas', async (req, res) => {
+    try {
+      const schemas = await projectStore.getOpenAPISchemas(req.params.id);
+      res.json(schemas);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch OpenAPI schemas' });
+    }
+  });
+
+  router.post('/:id/openapi-schemas', async (req, res) => {
+    try {
+      const { name, description, version, title, baseUrl, schema } = req.body;
+      if (!name || !version || !title || !schema) {
+        return res.status(400).json({ error: 'name, version, title, and schema are required' });
+      }
+      
+      const openApiSchema = await projectStore.createOpenAPISchema({
+        projectId: req.params.id,
+        name,
+        description,
+        version,
+        title,
+        baseUrl,
+        schema
+      });
+      res.status(201).json(openApiSchema);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create OpenAPI schema' });
+    }
+  });
+
+  router.put('/:id/openapi-schemas/:schemaId', async (req, res) => {
+    try {
+      const { name, description, version, title, baseUrl, schema } = req.body;
+      const openApiSchema = await projectStore.updateOpenAPISchema(req.params.schemaId, {
+        name,
+        description,
+        version,
+        title,
+        baseUrl,
+        schema
+      });
+      
+      if (!openApiSchema) {
+        return res.status(404).json({ error: 'OpenAPI schema not found' });
+      }
+      
+      res.json(openApiSchema);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update OpenAPI schema' });
+    }
+  });
+
+  router.delete('/:id/openapi-schemas/:schemaId', async (req, res) => {
+    try {
+      const success = await projectStore.deleteOpenAPISchema(req.params.schemaId);
+      if (!success) {
+        return res.status(404).json({ error: 'OpenAPI schema not found' });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete OpenAPI schema' });
+    }
+  });
+
+  router.post('/:id/openapi-schemas/:schemaId/generate-flows', async (req, res) => {
+    try {
+      const { selectedOperations, baseUrlOverride, folderId } = req.body;
+      if (!selectedOperations || selectedOperations.length === 0) {
+        return res.status(400).json({ error: 'selectedOperations is required' });
+      }
+      
+      const schema = await projectStore.getOpenAPISchema(req.params.schemaId);
+      if (!schema) {
+        return res.status(404).json({ error: 'OpenAPI schema not found' });
+      }
+      
+      const flows = await projectStore.generateFlowsFromOpenAPISchema(
+        req.params.schemaId,
+        selectedOperations,
+        baseUrlOverride,
+        folderId
+      );
+      res.status(201).json(flows);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to generate flows from OpenAPI schema' });
+    }
+  });
+
   return router;
 };
