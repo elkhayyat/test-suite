@@ -297,7 +297,7 @@ export default function FlowTree({
       onDragStart={(e) => handleDragStart(e, flow)}
       onDragEnd={handleDragEnd}
       onContextMenu={(e) => handleMenuOpen(e, flow.id)}
-      onClick={() => navigate(`/flows/${flow.id}`)}
+      onClick={() => navigate(`/flows/${flow.id}${flow.projectId ? `?projectId=${flow.projectId}` : ''}`)}
       sx={{
         display: 'flex',
         alignItems: 'center',

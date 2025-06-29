@@ -715,7 +715,7 @@ export default function FlowEditor() {
       );
       
       if (id === 'new' && result?.id) {
-        navigate(`/flows/${result.id}`);
+        navigate(`/flows/${result.id}${projectId ? `?projectId=${projectId}` : ''}`);
         setSnackbar({ open: true, message: 'Flow created successfully', severity: 'success' });
       } else if (!isAutoSave) {
         setSnackbar({ open: true, message: 'Flow saved successfully', severity: 'success' });
