@@ -12,12 +12,15 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import PauseIcon from '@mui/icons-material/Pause';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import InfoIcon from '@mui/icons-material/Info';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
 import { TestStep, StepResult } from '../../../shared/src/types';
 import StepDetailsModal from './StepDetailsModal';
 
 interface StepNodeData extends TestStep {
   result?: StepResult;
   isRunning?: boolean;
+  isSelected?: boolean;
+  selectionMode?: boolean;
 }
 
 interface StepNodeProps {
@@ -172,10 +175,10 @@ export default function StepNode({ data }: StepNodeProps) {
       sx={{ 
         p: 0,
         minWidth: 250,
-        cursor: 'move',
+        cursor: data.selectionMode ? 'pointer' : 'move',
         transition: 'all 0.3s ease',
-        border: data.result ? `2px solid` : '1px solid',
-        borderColor: data.result ? 
+        border: data.isSelected ? `3px solid` : data.result ? `2px solid` : '1px solid',
+        borderColor: data.isSelected ? 'primary.main' : data.result ? 
           (data.result.status === 'passed' ? 'success.main' : 
            data.result.status === 'failed' ? 'error.main' :
            data.result.status === 'running' ? 'primary.main' : 
@@ -184,15 +187,49 @@ export default function StepNode({ data }: StepNodeProps) {
         position: 'relative',
         overflow: 'hidden',
         ...getStatusBackground(),
+        ...(data.isSelected && {
+          boxShadow: (theme) => `0 0 0 4px ${theme.palette.primary.main}40`,
+          transform: 'scale(1.02)'
+        }),
         '&:hover': {
-          transform: 'scale(1.05)',
-          boxShadow: (theme) => theme.palette.mode === 'dark' 
-            ? '0 8px 32px rgba(255,255,255,0.1)' 
-            : '0 8px 32px rgba(0,0,0,0.15)',
+          transform: data.isSelected ? 'scale(1.02)' : 'scale(1.05)',
+          boxShadow: (theme) => data.isSelected 
+            ? `0 0 0 4px ${theme.palette.primary.main}40`
+            : theme.palette.mode === 'dark' 
+              ? '0 8px 32px rgba(255,255,255,0.1)' 
+              : '0 8px 32px rgba(0,0,0,0.15)',
         }
       }}
     >
       <Handle type="target" position={Position.Top} />
+      
+      {/* Selection Indicator */}
+      {data.isSelected && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: -12,
+            right: -12,
+            width: 24,
+            height: 24,
+            borderRadius: '50%',
+            backgroundColor: 'primary.main',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 2,
+            zIndex: 10,
+            animation: 'bounce 0.3s ease-out',
+            '@keyframes bounce': {
+              '0%': { transform: 'scale(0)' },
+              '50%': { transform: 'scale(1.2)' },
+              '100%': { transform: 'scale(1)' }
+            }
+          }}
+        >
+          <CheckBoxIcon sx={{ fontSize: 16, color: 'white' }} />
+        </Box>
+      )}
       
       {/* Status Progress Bar */}
       {data.result?.status === 'running' && (
