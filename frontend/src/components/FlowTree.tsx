@@ -112,7 +112,10 @@ export default function FlowTree({
   const handleMenuOpen = (event: React.MouseEvent, flowId: string) => {
     event.preventDefault();
     event.stopPropagation();
-    setAnchorEl(prev => ({ ...prev, [flowId]: event.currentTarget as HTMLElement }));
+    const element = event.currentTarget as HTMLElement;
+    if (element) {
+      setAnchorEl(prev => ({ ...prev, [flowId]: element }));
+    }
   };
 
   const handleMenuClose = (flowId: string) => {
@@ -126,7 +129,10 @@ export default function FlowTree({
     
     // Ensure it's a right-click (button 2) or context menu event
     if (event.button === 2 || event.type === 'contextmenu') {
-      setFolderAnchorEl(prev => ({ ...prev, [folderId]: event.currentTarget as HTMLElement }));
+      const element = event.currentTarget as HTMLElement;
+      if (element) {
+        setFolderAnchorEl(prev => ({ ...prev, [folderId]: element }));
+      }
       return false; // Additional prevention
     }
     
@@ -144,7 +150,10 @@ export default function FlowTree({
     
     // Ensure it's a right-click (button 2) or context menu event
     if (event.button === 2 || event.type === 'contextmenu') {
-      setProjectAnchorEl(prev => ({ ...prev, [projectId]: event.currentTarget as HTMLElement }));
+      const element = event.currentTarget as HTMLElement;
+      if (element) {
+        setProjectAnchorEl(prev => ({ ...prev, [projectId]: element }));
+      }
       return false; // Additional prevention
     }
     
@@ -309,6 +318,14 @@ export default function FlowTree({
         anchorEl={anchorEl[flow.id]}
         open={Boolean(anchorEl[flow.id])}
         onClose={() => handleMenuClose(flow.id)}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
       >
         <MenuItem onClick={() => {
           onFlowRun(flow.id);
@@ -377,6 +394,14 @@ export default function FlowTree({
           anchorEl={folderAnchorEl[folder.id]}
           open={Boolean(folderAnchorEl[folder.id])}
           onClose={() => handleFolderMenuClose(folder.id)}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'right',
+          }}
+          transformOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+          }}
         >
           <MenuItem onClick={() => {
             onFolderCreateFlow(folder.id, folder.projectId);
@@ -484,6 +509,14 @@ export default function FlowTree({
             anchorEl={projectAnchorEl[project.id]}
             open={Boolean(projectAnchorEl[project.id])}
             onClose={() => handleProjectMenuClose(project.id)}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
           >
             <MenuItem onClick={() => {
               onProjectCreateFlow(project.id);
