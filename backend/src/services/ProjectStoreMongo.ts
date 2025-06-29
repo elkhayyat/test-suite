@@ -316,7 +316,7 @@ export class ProjectStore {
       }
 
       const parsedAPI = parseOpenAPISchema(schema.schema);
-      const steps = generateStepsFromOpenAPI(parsedAPI, selectedOperations, baseUrlOverride);
+      const steps = generateStepsFromOpenAPI(parsedAPI, selectedOperations, baseUrlOverride, schema.schema);
       
       // Create flows for each operation
       const flows: TestFlow[] = [];

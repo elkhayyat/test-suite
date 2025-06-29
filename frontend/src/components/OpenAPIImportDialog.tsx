@@ -61,6 +61,7 @@ export default function OpenAPIImportDialog({ open, onClose, onImport, projectId
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [parsedAPI, setParsedAPI] = useState<ParsedOpenAPI | null>(null);
+  const [originalSchema, setOriginalSchema] = useState<any>(null);
   const [selectedOperations, setSelectedOperations] = useState<string[]>([]);
   const [baseUrlOverride, setBaseUrlOverride] = useState('');
   const [useCustomBaseUrl, setUseCustomBaseUrl] = useState(false);
@@ -112,6 +113,7 @@ export default function OpenAPIImportDialog({ open, onClose, onImport, projectId
       const schema = JSON.parse(text);
       const parsed = parseOpenAPISchema(schema);
       setParsedAPI(parsed);
+      setOriginalSchema(schema);
       setError('');
       
       // Pre-select all operations
@@ -177,7 +179,8 @@ export default function OpenAPIImportDialog({ open, onClose, onImport, projectId
       const steps = generateStepsFromOpenAPI(
         parsedAPI,
         selectedOperations,
-        baseUrlOverride || undefined
+        baseUrlOverride || undefined,
+        originalSchema
       );
 
       onImport(steps);
@@ -193,6 +196,7 @@ export default function OpenAPIImportDialog({ open, onClose, onImport, projectId
     setSchemaUrl('');
     setError('');
     setParsedAPI(null);
+    setOriginalSchema(null);
     setSelectedOperations([]);
     setBaseUrlOverride('');
     setUseCustomBaseUrl(false);

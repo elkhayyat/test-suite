@@ -10,6 +10,7 @@ export interface OpenAPIOperation {
   parameters?: any[];
   requestBody?: any;
   responses?: any;
+  security?: any[];
 }
 
 export interface ParsedOpenAPI {
@@ -17,6 +18,8 @@ export interface ParsedOpenAPI {
   version: string;
   servers: string[];
   operations: OpenAPIOperation[];
+  securitySchemes?: any;
+  security?: any[];
 }
 
 export function parseOpenAPISchema(schema: any): ParsedOpenAPI {
@@ -24,7 +27,9 @@ export function parseOpenAPISchema(schema: any): ParsedOpenAPI {
     title: schema.info?.title || 'Untitled API',
     version: schema.info?.version || '1.0.0',
     servers: [],
-    operations: []
+    operations: [],
+    securitySchemes: schema.components?.securitySchemes || {},
+    security: schema.security || []
   };
 
   // Extract servers
@@ -48,7 +53,8 @@ export function parseOpenAPISchema(schema: any): ParsedOpenAPI {
             description: operation.description,
             parameters: operation.parameters || [],
             requestBody: operation.requestBody,
-            responses: operation.responses
+            responses: operation.responses,
+            security: operation.security || schema.security || []
           });
         }
       });
@@ -61,7 +67,8 @@ export function parseOpenAPISchema(schema: any): ParsedOpenAPI {
 export function generateStepsFromOpenAPI(
   parsedAPI: ParsedOpenAPI, 
   selectedOperations: string[],
-  baseUrl?: string
+  baseUrl?: string,
+  fullSchema?: any
 ): TestStep[] {
   const steps: TestStep[] = [];
   const server = baseUrl || parsedAPI.servers[0] || '';
@@ -91,6 +98,31 @@ export function generateStepsFromOpenAPI(
         'Content-Type': 'application/json'
       };
 
+      // Add authorization headers based on security schemes
+      if (operation.security && operation.security.length > 0 && parsedAPI.securitySchemes) {
+        operation.security.forEach((secReq: any) => {
+          Object.keys(secReq).forEach(schemeName => {
+            const scheme = parsedAPI.securitySchemes[schemeName];
+            if (scheme) {
+              switch (scheme.type) {
+                case 'http':
+                  if (scheme.scheme === 'bearer') {
+                    headers['Authorization'] = '{{bearerToken}}';
+                  } else if (scheme.scheme === 'basic') {
+                    headers['Authorization'] = '{{basicAuth}}';
+                  }
+                  break;
+                case 'apiKey':
+                  if (scheme.in === 'header') {
+                    headers[scheme.name] = `{{${scheme.name}}}`;
+                  }
+                  break;
+              }
+            }
+          });
+        });
+      }
+
       // Add header parameters
       if (operation.parameters) {
         operation.parameters
@@ -116,8 +148,19 @@ export function generateStepsFromOpenAPI(
 
       // Build request body
       let body = null;
-      if (operation.requestBody?.content?.['application/json']?.schema) {
-        body = generateExampleFromSchema(operation.requestBody.content['application/json'].schema);
+      if (operation.requestBody?.content) {
+        // Try different content types
+        const contentTypes = ['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data'];
+        for (const contentType of contentTypes) {
+          if (operation.requestBody.content[contentType]?.schema) {
+            const schema = operation.requestBody.content[contentType].schema;
+            body = generateExampleFromSchema(schema, parsedAPI, fullSchema);
+            if (contentType !== 'application/json') {
+              headers['Content-Type'] = contentType;
+            }
+            break;
+          }
+        }
       }
 
       const config: HttpStepConfig = {
@@ -140,21 +183,63 @@ export function generateStepsFromOpenAPI(
   return steps;
 }
 
-function generateExampleFromSchema(schema: any): any {
+function generateExampleFromSchema(schema: any, parsedAPI?: ParsedOpenAPI, fullSchema?: any): any {
   if (!schema) return null;
+
+  // Handle $ref references
+  if (schema.$ref) {
+    // Extract the reference path (e.g., #/components/schemas/User)
+    const refPath = schema.$ref.split('/');
+    if (refPath[0] === '#' && fullSchema) {
+      let resolvedSchema = fullSchema;
+      for (let i = 1; i < refPath.length; i++) {
+        resolvedSchema = resolvedSchema[refPath[i]];
+        if (!resolvedSchema) break;
+      }
+      if (resolvedSchema && resolvedSchema !== schema) {
+        return generateExampleFromSchema(resolvedSchema, parsedAPI, fullSchema);
+      }
+    }
+    // Fallback if reference cannot be resolved
+    const schemaName = refPath[refPath.length - 1];
+    return { [`${schemaName}_ref`]: 'unresolved reference' };
+  }
+
+  // Handle allOf, oneOf, anyOf
+  if (schema.allOf) {
+    const combined: any = {};
+    schema.allOf.forEach((subSchema: any) => {
+      Object.assign(combined, generateExampleFromSchema(subSchema, parsedAPI, fullSchema));
+    });
+    return combined;
+  }
+
+  if (schema.oneOf || schema.anyOf) {
+    const schemas = schema.oneOf || schema.anyOf;
+    return generateExampleFromSchema(schemas[0], parsedAPI, fullSchema);
+  }
+
+  // Handle examples
+  if (schema.example !== undefined) {
+    return schema.example;
+  }
+
+  if (schema.examples && Array.isArray(schema.examples) && schema.examples.length > 0) {
+    return schema.examples[0];
+  }
 
   switch (schema.type) {
     case 'object':
       const obj: any = {};
       if (schema.properties) {
         Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
-          obj[key] = generateExampleFromSchema(propSchema);
+          obj[key] = generateExampleFromSchema(propSchema, parsedAPI, fullSchema);
         });
       }
       return obj;
 
     case 'array':
-      return [generateExampleFromSchema(schema.items)];
+      return [generateExampleFromSchema(schema.items, parsedAPI, fullSchema)];
 
     case 'string':
       if (schema.example) return schema.example;
@@ -176,6 +261,14 @@ function generateExampleFromSchema(schema: any): any {
       return true;
 
     default:
+      // If no type is specified but we have properties, treat as object
+      if (schema.properties) {
+        const obj: any = {};
+        Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
+          obj[key] = generateExampleFromSchema(propSchema, parsedAPI, fullSchema);
+        });
+        return obj;
+      }
       return null;
   }
 }
