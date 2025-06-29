@@ -428,58 +428,6 @@ export default function FlowEditor() {
     // to avoid conflicts with the undo/redo system
   }, [stepResults, currentRun]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      try {
-        // Check if user is typing in an input field
-        if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
-          return;
-        }
-
-        // Copy (Cmd/Ctrl + C)
-        if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedNode) {
-          updateClipboard(selectedNode.data as TestStep);
-          setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
-        }
-
-        // Paste (Cmd/Ctrl + V)
-        if ((e.metaKey || e.ctrlKey) && e.key === 'v' && clipboard) {
-          const newNode: Node = {
-            id: `${Date.now()}`,
-            type: 'testStep',
-            position: calculateOffsetPosition(selectedNode?.position),
-            data: {
-              ...clipboard,
-              id: `${Date.now()}`,
-              name: `${clipboard.name} (Copy)`,
-            },
-          };
-          undoableAddNode(newNode);
-          setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
-          debouncedSetSaveStatus('unsaved');
-        }
-
-        // Delete (Delete or Backspace)
-        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNode) {
-          undoableDeleteNode(selectedNode.id);
-          uiActions.setSelectedNode(null);
-          debouncedSetSaveStatus('unsaved');
-        }
-      } catch (error) {
-        console.error('Keyboard shortcut error:', error);
-        setSnackbar({
-          open: true,
-          message: 'An error occurred with keyboard shortcut',
-          severity: 'error'
-        });
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [selectedNode, clipboard, undoableAddNode, undoableDeleteNode, debouncedSetSaveStatus]);
 
   const loadFlow = async (flowId: string) => {
     try {
