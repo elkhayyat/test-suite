@@ -53,6 +53,16 @@ export type StepOutput = {
   executionTime?: number;
   query?: string;
   summary?: string;
+  // Store the actual resolved configuration used during execution
+  resolvedConfig?: {
+    url?: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: any;
+    timeout?: number;
+    retries?: number;
+    retryDelay?: number;
+  };
 };
 
 export interface StepResult {

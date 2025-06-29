@@ -406,6 +406,15 @@ export class TestRunner {
         status: response.status,
         headers: response.headers,
         data: response.data,
+        resolvedConfig: {
+          url: processedUrl,
+          method: config.method || 'GET',
+          headers: processedHeaders,
+          body: processedBody,
+          timeout: actualTimeout,
+          retries: config.retries || 0,
+          retryDelay: config.retryDelay || 1000,
+        }
       };
     } catch (error) {
       if (axios.isAxiosError(error)) {
