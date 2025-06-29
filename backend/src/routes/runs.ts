@@ -116,5 +116,108 @@ export const runRoutes = (testRunner: TestRunner, flowStore?: FlowStore, project
     res.json({ message: 'Run stopped successfully' });
   });
 
+  // Bulk run all flows in a project
+  router.post('/bulk/project/:projectId', async (req: AuthRequest, res) => {
+    const { projectId } = req.params;
+    const { environmentId } = req.body;
+    
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    try {
+      // Verify user has access to the project
+      if (projectStore) {
+        const project = await projectStore.getProject(projectId);
+        if (!project) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+        if (project.organizationId !== req.user.organizationId) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+      
+      // Get all flows in the project
+      if (!flowStore) {
+        return res.status(500).json({ error: 'Flow store not available' });
+      }
+      
+      const flows = await flowStore.getFlowsByProject(projectId);
+      if (flows.length === 0) {
+        return res.status(404).json({ error: 'No flows found in project' });
+      }
+      
+      // Start runs for all flows
+      const runIds = [];
+      for (const flow of flows) {
+        try {
+          const runId = await testRunner.startRun(flow.id, environmentId, undefined, req.user.organizationId, req.user.userId);
+          runIds.push({ flowId: flow.id, flowName: flow.name, runId });
+        } catch (error) {
+          console.error(`Failed to start run for flow ${flow.id}:`, error);
+          runIds.push({ flowId: flow.id, flowName: flow.name, error: (error as Error).message });
+        }
+      }
+      
+      res.status(201).json({ 
+        message: `Started ${runIds.filter(r => r.runId).length} of ${flows.length} flows`,
+        results: runIds 
+      });
+    } catch (error) {
+      console.error('Failed to start bulk project run:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // Bulk run all flows in a folder
+  router.post('/bulk/folder/:folderId', async (req: AuthRequest, res) => {
+    const { folderId } = req.params;
+    const { environmentId } = req.body;
+    
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    try {
+      // Get all flows in the folder
+      if (!flowStore) {
+        return res.status(500).json({ error: 'Flow store not available' });
+      }
+      
+      const flows = await flowStore.getFlowsByFolder(folderId);
+      if (flows.length === 0) {
+        return res.status(404).json({ error: 'No flows found in folder' });
+      }
+      
+      // Verify user has access to the project containing this folder
+      if (flows.length > 0 && flows[0].projectId && projectStore) {
+        const project = await projectStore.getProject(flows[0].projectId);
+        if (project && project.organizationId !== req.user.organizationId) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+      
+      // Start runs for all flows
+      const runIds = [];
+      for (const flow of flows) {
+        try {
+          const runId = await testRunner.startRun(flow.id, environmentId, undefined, req.user.organizationId, req.user.userId);
+          runIds.push({ flowId: flow.id, flowName: flow.name, runId });
+        } catch (error) {
+          console.error(`Failed to start run for flow ${flow.id}:`, error);
+          runIds.push({ flowId: flow.id, flowName: flow.name, error: (error as Error).message });
+        }
+      }
+      
+      res.status(201).json({ 
+        message: `Started ${runIds.filter(r => r.runId).length} of ${flows.length} flows`,
+        results: runIds 
+      });
+    } catch (error) {
+      console.error('Failed to start bulk folder run:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   return router;
 };
