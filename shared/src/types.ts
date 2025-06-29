@@ -35,30 +35,45 @@ export interface TestRun {
   endTime?: Date;
   results: StepResult[];
   selectedSteps?: string[];
+  error?: string;
 }
+
+export type StepOutput = {
+  status?: number;
+  headers?: Record<string, string>;
+  data?: unknown;
+  screenshot?: string;
+  success?: boolean;
+  rows?: Record<string, unknown>[];
+  rowCount?: number;
+  executionTime?: number;
+  query?: string;
+  summary?: string;
+};
 
 export interface StepResult {
   stepId: string;
   status: 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
   startTime: Date;
   endTime?: Date;
-  output?: any;
+  output?: StepOutput;
   error?: string;
   logs?: ConsoleLog[];
+  duration?: number;
 }
 
 export interface ConsoleLog {
   timestamp: Date;
   level: 'log' | 'info' | 'warn' | 'error' | 'debug' | 'command';
   message: string;
-  details?: any;
+  details?: Record<string, unknown> | string | null;
 }
 
 export interface HttpStepConfig {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   url: string;
   headers?: Record<string, string>;
-  body?: any;
+  body?: string | object | null;
   timeout?: number;
   validateStatus?: (status: number) => boolean;
   retries?: number;
@@ -75,7 +90,7 @@ export interface BrowserStepConfig {
 export interface AssertionStepConfig {
   type: 'equals' | 'contains' | 'exists' | 'custom';
   source: string;
-  expected?: any;
+  expected?: string | number | boolean | null;
   customScript?: string;
 }
 
@@ -147,8 +162,34 @@ export interface Folder {
   projectId: string;
   parentId?: string;
   name: string;
+  description?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface FolderTree extends Folder {
+  children: FolderTree[];
+}
+
+export interface IFlowStore {
+  flows: Map<string, TestFlow>;
+  loadFlowsFromDatabase(): Promise<void>;
+  getAllFlows(): TestFlow[] | Promise<TestFlow[]>;
+  getFlow(id: string): TestFlow | undefined | Promise<TestFlow | undefined>;
+  createFlow(data: Partial<TestFlow>): Promise<TestFlow>;
+  updateFlow(id: string, data: Partial<TestFlow>): Promise<TestFlow | null | undefined>;
+  deleteFlow(id: string): Promise<boolean>;
+  getFlowsByProject(projectId: string): TestFlow[] | Promise<TestFlow[]>;
+  getFlowsByFolder(folderId: string): TestFlow[] | Promise<TestFlow[]>;
+}
+
+export interface IEnvironmentStore {
+  getAllEnvironments(): Promise<Environment[]>;
+  getEnvironment(id: string): Promise<Environment | undefined | null>;
+  createEnvironment(data: Partial<Environment>): Promise<Environment>;
+  updateEnvironment(id: string, data: Partial<Environment>): Promise<Environment | null | undefined>;
+  deleteEnvironment(id: string): Promise<boolean>;
+  getEnvironmentVariables(environmentId?: string): Promise<EnvironmentVariable[]>;
 }
 
 export interface User {

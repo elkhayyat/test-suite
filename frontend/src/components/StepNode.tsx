@@ -1,21 +1,19 @@
 import React, { useState } from 'react';
 import { Handle, Position } from 'react-flow-renderer';
-import { Box, Paper, Typography, CircularProgress, Chip, Collapse, IconButton, Tabs, Tab, LinearProgress, Fade } from '@mui/material';
+import { Box, Paper, Typography, CircularProgress, Chip, LinearProgress, Fade, Button } from '@mui/material';
 import HttpIcon from '@mui/icons-material/Http';
 import WebIcon from '@mui/icons-material/Web';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import TimerIcon from '@mui/icons-material/Timer';
 import CodeIcon from '@mui/icons-material/Code';
 import ErrorIcon from '@mui/icons-material/Error';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import StorageIcon from '@mui/icons-material/Storage';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import PauseIcon from '@mui/icons-material/Pause';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import InfoIcon from '@mui/icons-material/Info';
 import { TestStep, StepResult } from '../../../shared/src/types';
+import StepDetailsModal from './StepDetailsModal';
 
 interface StepNodeData extends TestStep {
   result?: StepResult;
@@ -27,31 +25,14 @@ interface StepNodeProps {
 }
 
 export default function StepNode({ data }: StepNodeProps) {
-  const [expanded, setExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
+  const [modalOpen, setModalOpen] = useState(false);
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      // Could add a toast notification here if needed
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
-  };
-
-  // Auto-expand when step fails and switch to error tab
+  // Auto-open modal when step fails
   React.useEffect(() => {
     if (data.result?.status === 'failed') {
-      setExpanded(true);
-      // Find error tab index and switch to it
-      const hasError = data.result?.error;
-      if (hasError) {
-        // Error tab will be at index 2 if output exists, otherwise at index 1
-        const errorTabIndex = data.result?.output ? 2 : 1;
-        setActiveTab(errorTabIndex);
-      }
+      setModalOpen(true);
     }
-  }, [data.result?.status, data.result?.error]);
+  }, [data.result?.status]);
 
   const getIcon = () => {
     switch (data.type) {
@@ -385,158 +366,36 @@ export default function StepNode({ data }: StepNodeProps) {
           </Box>
           <Typography variant="body2" sx={{ flex: 1 }}>{data.name}</Typography>
           {data.result && (data.result.output || data.result.error || data.result.status === 'passed') && (
-            <IconButton 
+            <Button 
               size="small" 
+              variant="outlined"
               onClick={(e) => {
                 e.stopPropagation();
-                setExpanded(!expanded);
+                setModalOpen(true);
               }}
-              sx={{ p: 0.5 }}
+              startIcon={<InfoIcon />}
+              sx={{ 
+                minWidth: 'auto',
+                px: 1,
+                py: 0.5,
+                fontSize: '0.75rem'
+              }}
             >
-              {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </IconButton>
+              Details
+            </Button>
           )}
         </Box>
 
-        {/* Execution result details */}
-        <Collapse in={expanded && !!data.result}>
-          {data.result && (() => {
-            const tabs = [
-              { label: 'Info', content: (
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    Status: {data.result!.status}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    Started: {new Date(data.result!.startTime).toLocaleTimeString()}
-                  </Typography>
-                  {data.result!.endTime && (
-                    <>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        Ended: {new Date(data.result!.endTime).toLocaleTimeString()}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        Duration: {formatDuration(data.result!.startTime, data.result!.endTime)}
-                      </Typography>
-                    </>
-                  )}
-                </Box>
-              )}
-            ];
-
-            if (data.result.output) {
-              // Special handling for SQL steps
-              if (data.type === 'sql' && typeof data.result.output === 'object' && data.result.output.rows) {
-                tabs.push({
-                  label: 'Results',
-                  content: (
-                    <Box>
-                      {data.result.output.summary && (
-                        <Typography variant="caption" color="success.main" sx={{ display: 'block', mb: 1 }}>
-                          {data.result.output.summary}
-                        </Typography>
-                      )}
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                        Query: {data.result.output.query}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                        Rows: {data.result.output.rowCount} | Time: {data.result.output.executionTime}ms
-                      </Typography>
-                      <Box sx={{ maxHeight: 150, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, p: 1 }}>
-                        <pre style={{ 
-                          margin: 0, 
-                          fontSize: '0.7rem', 
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word'
-                        }}>
-                          {JSON.stringify(data.result.output.rows, null, 2)}
-                        </pre>
-                      </Box>
-                    </Box>
-                  )
-                });
-              } else {
-                // Standard output display for other step types
-                tabs.push({
-                  label: 'Output',
-                  content: (
-                    <Box>
-                      <pre style={{ 
-                        margin: 0, 
-                        fontSize: '0.75rem', 
-                        overflow: 'auto', 
-                        maxHeight: 200,
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word'
-                      }}>
-                        {typeof data.result!.output === 'string' 
-                          ? data.result!.output 
-                          : JSON.stringify(data.result!.output, null, 2)}
-                      </pre>
-                    </Box>
-                  )
-                });
-              }
-            }
-
-            if (data.result.error) {
-              tabs.push({
-                label: 'Error',
-                content: (
-                  <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                      <Typography variant="body2" color="error" sx={{ flex: 1, fontFamily: 'monospace' }}>
-                        {data.result!.error}
-                      </Typography>
-                      <IconButton
-                        size="small"
-                        onClick={() => copyToClipboard(data.result!.error!)}
-                        title="Copy error message"
-                        sx={{ mt: -0.5 }}
-                      >
-                        <ContentCopyIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                )
-              });
-            }
-
-            // Ensure activeTab is within valid range
-            const validActiveTab = Math.min(activeTab, tabs.length - 1);
-
-            return (
-              <Box sx={{ mt: 1, bgcolor: 'background.default', borderRadius: 1 }}>
-                <Tabs 
-                  value={validActiveTab} 
-                  onChange={(_, newValue) => setActiveTab(newValue)}
-                  variant="scrollable"
-                  scrollButtons="auto"
-                  sx={{ 
-                    minHeight: 32,
-                    '& .MuiTab-root': { 
-                      minHeight: 32, 
-                      py: 0.5, 
-                      fontSize: '0.75rem',
-                      minWidth: 'auto',
-                      px: 1
-                    }
-                  }}
-                >
-                  {tabs.map((tab, index) => (
-                    <Tab key={index} label={tab.label} />
-                  ))}
-                </Tabs>
-                
-                <Box sx={{ p: 1 }}>
-                  {tabs[validActiveTab]?.content}
-                </Box>
-              </Box>
-            );
-          })()}
-        </Collapse>
       </Box>
       <Handle type="source" position={Position.Bottom} />
+      
+      {/* Step Details Modal */}
+      <StepDetailsModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        step={data}
+        result={data.result}
+      />
     </Paper>
   );
 }

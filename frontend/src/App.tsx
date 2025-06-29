@@ -10,6 +10,8 @@ import TestRunDetails from './pages/TestRunDetails';
 import Environments from './pages/Environments';
 import Projects from './pages/Projects';
 import Organizations from './pages/Organizations';
+import { EnvironmentProvider } from './contexts/EnvironmentContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 interface ThemeContextType {
   toggleColorMode: () => void;
@@ -204,20 +206,58 @@ function App() {
     <ColorModeContext.Provider value={colorMode}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router>
-          <Layout>
-            <Routes>
-              <Route path="/" element={<FlowsOrganizer />} />
-              <Route path="/projects" element={<Projects />} />
-              <Route path="/flows/:id" element={<FlowEditor />} />
-              <Route path="/flows/new" element={<FlowEditor />} />
-              <Route path="/runs" element={<TestRuns />} />
-              <Route path="/runs/:runId" element={<TestRunDetails />} />
-              <Route path="/environments" element={<Environments />} />
-              <Route path="/organizations" element={<Organizations />} />
-            </Routes>
-          </Layout>
-        </Router>
+        <ErrorBoundary>
+          <EnvironmentProvider>
+            <Router>
+              <Layout>
+                <ErrorBoundary>
+                  <Routes>
+                    <Route path="/" element={
+                      <ErrorBoundary>
+                        <FlowsOrganizer />
+                      </ErrorBoundary>
+                    } />
+                    <Route path="/projects" element={
+                      <ErrorBoundary>
+                        <Projects />
+                      </ErrorBoundary>
+                    } />
+                    <Route path="/flows/new" element={
+                      <ErrorBoundary>
+                        <FlowEditor />
+                      </ErrorBoundary>
+                    } />
+                    <Route path="/flows/:id" element={
+                      <ErrorBoundary>
+                        <FlowEditor />
+                      </ErrorBoundary>
+                    } />
+                    <Route path="/runs" element={
+                      <ErrorBoundary>
+                        <TestRuns />
+                      </ErrorBoundary>
+                    } />
+                    <Route path="/runs/:runId" element={
+                      <ErrorBoundary>
+                        <TestRunDetails />
+                      </ErrorBoundary>
+                    } />
+                    <Route path="/environments" element={
+                      <ErrorBoundary>
+                        <Environments />
+                      </ErrorBoundary>
+                    } />
+                    <Route path="/organizations" element={
+                      <ErrorBoundary>
+                        <Organizations />
+                      </ErrorBoundary>
+                    } />
+                  </Routes>
+                </ErrorBoundary>
+              </Layout>
+            </Router>
+          </EnvironmentProvider>
+        </ErrorBoundary>
       </ThemeProvider>
     </ColorModeContext.Provider>
   );

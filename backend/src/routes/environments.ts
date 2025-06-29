@@ -8,7 +8,7 @@ export const environmentRoutes = Router();
 // Get all environments
 environmentRoutes.get('/', async (req, res) => {
   try {
-    const environments = await environmentStore.getEnvironments();
+    const environments = await environmentStore.getAllEnvironments();
     res.json(environments);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch environments' });

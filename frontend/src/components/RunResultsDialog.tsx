@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -106,9 +106,11 @@ export default function RunResultsDialog({ open, onClose, runId, flowName }: Run
     }
   };
 
-  const formatDuration = (start: string, end?: string) => {
+  const formatDuration = (start: Date | string, end?: Date | string) => {
     if (!end) return 'Running...';
-    const duration = new Date(end).getTime() - new Date(start).getTime();
+    const startTime = typeof start === 'string' ? new Date(start) : start;
+    const endTime = typeof end === 'string' ? new Date(end) : end;
+    const duration = endTime.getTime() - startTime.getTime();
     return `${duration}ms`;
   };
 

@@ -8,7 +8,8 @@ export class ConsoleLogger {
     info: console.info,
     warn: console.warn,
     error: console.error,
-    debug: console.debug
+    debug: console.debug,
+    command: console.log
   };
 
   constructor(private io: Server) {}
@@ -30,7 +31,9 @@ export class ConsoleLogger {
           message: args.map(arg => 
             typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
           ).join(' '),
-          details: args.length > 1 ? args.slice(1) : undefined
+          details: args.length > 1 ? args.slice(1).map(arg => 
+            typeof arg === 'object' ? arg : String(arg)
+          ).reduce((acc, val, idx) => ({ ...acc, [idx]: val }), {}) : undefined
         };
 
         const logs = this.logs.get(runKey) || [];

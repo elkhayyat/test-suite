@@ -2,9 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   TextField, 
   Autocomplete, 
-  Paper, 
   Popper, 
-  createFilterOptions,
   TextFieldProps 
 } from '@mui/material';
 import { TestStep } from '../../../shared/src/types';
@@ -16,10 +14,6 @@ interface StepReferenceFieldProps extends Omit<TextFieldProps, 'onChange'> {
   availableSteps: TestStep[];
 }
 
-const filter = createFilterOptions<string>({
-  matchFrom: 'start',
-  limit: 10,
-});
 
 export default function StepReferenceField({ 
   value, 
@@ -107,7 +101,7 @@ export default function StepReferenceField({
   };
 
   const handleAutocompleteChange = (_: any, newValue: any) => {
-    if (newValue && typeof newValue === 'object') {
+    if (newValue && typeof newValue === 'object' && newValue.reference) {
       // Replace the current word with the selected step reference
       const before = inputValue.substring(0, wordStart - 1); // -1 to include the $
       const after = inputValue.substring(cursorPosition);
@@ -116,6 +110,7 @@ export default function StepReferenceField({
       setInputValue(newText);
       onChange(newText);
       setOpen(false);
+      setAutocompleteType(null);
       
       // Set cursor position after the inserted reference
       setTimeout(() => {
@@ -128,17 +123,17 @@ export default function StepReferenceField({
     }
   };
 
-  const getFilteredOptions = () => {
+  const getFilteredOptions = (): Array<{id: string; name: string; reference: string; label: string; type: 'step' | 'random'}> => {
     if (autocompleteType === 'random') {
       // If user typed "random", show all random options
       if (currentWord === 'random' || currentWord.startsWith('random')) {
-        return randomOptions;
+        return randomOptions as Array<{id: string; name: string; reference: string; label: string; type: 'random'}>;
       }
       // Otherwise filter by function name
       return randomOptions.filter(option => 
         option.id.toLowerCase().includes(currentWord.toLowerCase()) ||
         option.name.toLowerCase().includes(currentWord.toLowerCase())
-      );
+      ) as Array<{id: string; name: string; reference: string; label: string; type: 'random'}>;
     } else if (autocompleteType === 'step') {
       return stepOptions.filter(option => 
         option.id.toLowerCase().includes(currentWord.toLowerCase()) ||
@@ -160,10 +155,10 @@ export default function StepReferenceField({
       filterOptions={(options) => options} // We're already filtering
       freeSolo
       disableClearable
-      value=""
+      value={undefined}
       onChange={handleAutocompleteChange}
       inputValue={inputValue}
-      onInputChange={(_, value, reason) => {
+      onInputChange={(_, _value, reason) => {
         if (reason === 'input') {
           // Handled by our custom onChange
         }
@@ -181,7 +176,7 @@ export default function StepReferenceField({
         />
       )}
       renderOption={(props, option) => (
-        <li {...props}>
+        <li {...props} key={option.id}>
           <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ 
@@ -198,7 +193,7 @@ export default function StepReferenceField({
             </div>
             {option.type === 'random' && (
               <span style={{ fontSize: '0.85em', color: 'text.secondary', marginTop: 2 }}>
-                {option.label}
+                {(GENERATOR_FUNCTIONS as any)[option.id]?.description || option.name}
               </span>
             )}
           </div>

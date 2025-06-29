@@ -1,10 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
-import { TestFlow } from '../../../shared/src/types';
+import { TestFlow, IFlowStore } from '../../../shared/src/types';
 import { sampleFlows } from './SampleFlows';
 import { getDatabase } from '../db/database';
 
-export class FlowStore {
-  private flows: Map<string, TestFlow> = new Map();
+export class FlowStore implements IFlowStore {
+  public flows: Map<string, TestFlow> = new Map();
 
   constructor() {
     this.initialize();
@@ -30,7 +30,7 @@ export class FlowStore {
     }
   }
 
-  private async loadFlowsFromDatabase() {
+  async loadFlowsFromDatabase(): Promise<void> {
     try {
       const db = await getDatabase();
       const rows = await db.all('SELECT * FROM flows');

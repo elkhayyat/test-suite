@@ -45,7 +45,10 @@ export class EnhancedInterpolator {
     // First handle {{variable}} syntax
     let result = this.interpolateEnvironmentVariables(str);
     
-    // Then handle $stepId.data.path syntax
+    // Then handle $random.function() syntax
+    result = processRandomGenerators(result);
+    
+    // Finally handle $stepId.data.path syntax
     result = this.interpolateStepReferences(result);
     
     console.log('Final interpolation result:', result);
@@ -87,7 +90,12 @@ export class EnhancedInterpolator {
    */
   private interpolateStepReferences(str: string): string {
     // Match $stepId.data.path patterns - only match when $ is at start or preceded by whitespace
+    // Exclude $random patterns which should be handled by processRandomGenerators
     return str.replace(/(?:^|\s)\$([a-zA-Z0-9_][a-zA-Z0-9_-]*)(\.[a-zA-Z0-9._\[\]]+)?/g, (match, stepId, path) => {
+      // Skip $random patterns
+      if (stepId === 'random') {
+        return match;
+      }
       console.log(`Processing step reference: stepId=${stepId}, path=${path}`);
       
       const stepResult = this.stepResults.get(stepId);
@@ -116,7 +124,8 @@ export class EnhancedInterpolator {
                typeof value === 'object' ? JSON.stringify(value) : String(value);
       } catch (error) {
         console.error(`Error navigating path ${path} in step ${stepId}:`, error);
-        throw new Error(`Cannot access path ${path} in step ${stepId}: ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Cannot access path ${path} in step ${stepId}: ${message}`);
       }
     });
   }
@@ -187,6 +196,8 @@ export class EnhancedInterpolator {
    */
   containsInterpolation(str: string): boolean {
     if (typeof str !== 'string') return false;
-    return /\{\{(\w+)\}\}/.test(str) || /(?:^|\s)\$[a-zA-Z0-9_][a-zA-Z0-9_-]*/.test(str);
+    return /\{\{(\w+)\}\}/.test(str) || 
+           /\$random\.\w+\(.*?\)/.test(str) || 
+           /(?:^|\s)\$[a-zA-Z0-9_][a-zA-Z0-9_-]*/.test(str);
   }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -10,16 +10,11 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Chip,
   IconButton,
 } from '@mui/material';
 import StopIcon from '@mui/icons-material/Stop';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import HistoryIcon from '@mui/icons-material/History';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ErrorIcon from '@mui/icons-material/Error';
-import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
-import RunCircleIcon from '@mui/icons-material/RunCircle';
 import { TestRun } from '../../../shared/src/types';
 import { api } from '../services/api';
 import { useSocket } from '../hooks/useSocket';
@@ -70,35 +65,6 @@ export default function TestRuns() {
     }
   };
 
-  const getStatusColor = (status: TestRun['status']) => {
-    switch (status) {
-      case 'pending':
-        return 'default';
-      case 'running':
-        return 'primary';
-      case 'completed':
-        return 'success';
-      case 'failed':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
-
-  const getStatusIcon = (status: TestRun['status']) => {
-    switch (status) {
-      case 'pending':
-        return <HourglassEmptyIcon fontSize="small" />;
-      case 'running':
-        return <RunCircleIcon fontSize="small" />;
-      case 'completed':
-        return <CheckCircleIcon fontSize="small" />;
-      case 'failed':
-        return <ErrorIcon fontSize="small" />;
-      default:
-        return null;
-    }
-  };
 
   return (
     <Box>

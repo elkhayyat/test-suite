@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   TextField,
@@ -376,7 +376,7 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
           <StepReferenceField
             fullWidth
             label="Expected Value"
-            value={config.expected || ''}
+            value={String(config.expected || '')}
             onChange={(value) => handleChange('expected', value)}
             margin="normal"
             availableSteps={availableSteps}

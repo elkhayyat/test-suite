@@ -1,15 +1,15 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Environment, EnvironmentVariable } from '../../../shared/src/types';
+import { Environment, EnvironmentVariable, IEnvironmentStore } from '../../../shared/src/types';
 import { MongoDB } from '../db/mongodb';
 
-export class EnvironmentStore {
+export class EnvironmentStore implements IEnvironmentStore {
   private mongodb: MongoDB;
 
   constructor(mongodb: MongoDB) {
     this.mongodb = mongodb;
   }
 
-  async getEnvironments(): Promise<Environment[]> {
+  async getAllEnvironments(): Promise<Environment[]> {
     try {
       const collections = this.mongodb.getCollections();
       const environments = await collections.environments.find({}).toArray();

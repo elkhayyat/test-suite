@@ -1,4 +1,3 @@
-import React from 'react';
 import { Card, CardContent, Skeleton, Grid } from '@mui/material';
 
 export default function SkeletonLoader() {

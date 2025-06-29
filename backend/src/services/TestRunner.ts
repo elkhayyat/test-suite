@@ -5,9 +5,9 @@ import https from 'https';
 import dns from 'dns';
 import { promisify } from 'util';
 import { chromium, Browser, Page } from 'playwright';
-import { TestRun, TestFlow, TestStep, StepResult, SubflowStepConfig } from '../../../shared/src/types';
+import { TestRun, TestFlow, TestStep, StepResult, SubflowStepConfig, IFlowStore, IEnvironmentStore } from '../../../shared/src/types';
 import { FlowStore } from './FlowStore';
-import { EnvironmentStore } from './EnvironmentStoreMongo';
+import { EnvironmentStore } from './EnvironmentStore';
 import { VariableInterpolator } from './VariableInterpolator';
 import { EnhancedInterpolator } from './EnhancedInterpolator';
 import { ConsoleLogger } from './ConsoleLogger';
@@ -17,10 +17,10 @@ export class TestRunner {
   private runs: Map<string, TestRun> = new Map();
   private browser: Browser | null = null;
   private activeRuns: Set<string> = new Set();
-  private environmentStore: EnvironmentStore;
+  private environmentStore: IEnvironmentStore;
   private consoleLogger: ConsoleLogger;
 
-  constructor(private io: Server, private flowStore: FlowStore, environmentStore: EnvironmentStore) {
+  constructor(private io: Server, private flowStore: IFlowStore, environmentStore: IEnvironmentStore) {
     this.environmentStore = environmentStore;
     this.consoleLogger = new ConsoleLogger(io);
   }
@@ -61,7 +61,7 @@ export class TestRunner {
    */
   private isMoreRecentResult(newResult: StepResult, existingResult?: StepResult): boolean {
     return !existingResult || 
-      (newResult.endTime && existingResult.endTime && newResult.endTime > existingResult.endTime);
+      (!!newResult.endTime && !!existingResult.endTime && newResult.endTime > existingResult.endTime);
   }
 
   async startRun(flowId: string, environmentId?: string, selectedSteps?: string[]): Promise<string> {
@@ -72,8 +72,8 @@ export class TestRunner {
 
     // If no environment specified, use the default
     if (!environmentId) {
-      const environments = await this.environmentStore.getEnvironments();
-      const defaultEnv = environments.find(e => e.isDefault);
+      const environments = await this.environmentStore.getAllEnvironments();
+      const defaultEnv = environments.find((e: any) => e.isDefault);
       environmentId = defaultEnv?.id || 'default';
     }
 
@@ -91,7 +91,7 @@ export class TestRunner {
     this.activeRuns.add(run.id);
     this.io.emit('run:started', run);
 
-    this.executeFlow(run.id, flow, environmentId, selectedSteps).catch(error => {
+    this.executeFlow(run.id, flow, environmentId!, selectedSteps).catch(error => {
       console.error('Flow execution error:', error);
       this.updateRunStatus(run.id, 'failed');
     });
@@ -120,9 +120,7 @@ export class TestRunner {
 
     try {
       // Load environment variables
-      console.log('Loading environment variables for environment:', environmentId);
       const variables = await this.environmentStore.getEnvironmentVariables(environmentId);
-      console.log(`Loaded ${variables.length} environment variables`);
       
       // Get existing step results for reference interpolation
       const existingResults = this.getLatestStepResults(flow.id);
@@ -334,35 +332,26 @@ export class TestRunner {
     // Validate URL format and test DNS resolution
     try {
       const parsedUrl = new URL(processedUrl);
-      console.log(`Parsed URL - Protocol: ${parsedUrl.protocol}, Host: ${parsedUrl.hostname}, Port: ${parsedUrl.port || 'default'}`);
       
       // Test DNS resolution
       const lookup = promisify(dns.lookup);
       try {
-        const dnsResult = await lookup(parsedUrl.hostname, { family: 4 }); // IPv4 only
-        console.log(`DNS lookup result for ${parsedUrl.hostname}:`, dnsResult);
+        await lookup(parsedUrl.hostname, { family: 4 }); // IPv4 only
       } catch (dnsError) {
-        console.log(`DNS lookup failed for ${parsedUrl.hostname}:`, dnsError);
+        // DNS lookup failed - continue anyway as it might be a local/test endpoint
       }
     } catch (error) {
       throw new Error(`Invalid URL format: ${processedUrl}`);
     }
     
-    console.log(`Making HTTP ${config.method || 'GET'} request to: ${processedUrl}`);
-    console.log(`Request headers:`, processedHeaders);
-    console.log(`Request body:`, config.body || 'none');
-    console.log(`Retries configured:`, maxRetries);
-    
     // Use default timeout of 1 second for HTTP requests
     const defaultTimeout = 1000;
     // Use configured timeout or default, no minimum enforced
     const actualTimeout = config.timeout || defaultTimeout;
-    console.log(`Request timeout:`, actualTimeout, `(configured: ${config.timeout || 'default'})`);
     
     // Retry loop
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       if (attempt > 0) {
-        console.log(`Retry attempt ${attempt} of ${maxRetries} after ${retryDelay}ms delay`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
       
@@ -382,11 +371,9 @@ export class TestRunner {
         try {
           // Try to parse as JSON
           processedBody = JSON.parse(bodyWithRandom);
-          console.log('Parsed body from string to JSON:', processedBody);
         } catch (e) {
           // Keep as string if not valid JSON
           processedBody = bodyWithRandom;
-          console.log('Body is not valid JSON, keeping as string');
         }
       } else if (config.body && typeof config.body === 'object') {
         // Process random values in JSON object
@@ -406,16 +393,7 @@ export class TestRunner {
         insecureHTTPParser: true,
       };
       
-      console.log('Full axios request config:', JSON.stringify({
-        ...requestConfig,
-        httpsAgent: 'HTTPS Agent configured'
-      }, null, 2));
-      
       const response = await axios(requestConfig);
-
-      console.log(`HTTP request completed with status: ${response.status}`);
-      console.log(`Response headers:`, response.headers);
-      console.log(`Response data (first 500 chars):`, JSON.stringify(response.data).substring(0, 500));
 
       return {
         status: response.status,
@@ -423,14 +401,7 @@ export class TestRunner {
         data: response.data,
       };
     } catch (error) {
-      console.error(`Attempt ${attempt + 1} failed:`, error);
-      
       if (axios.isAxiosError(error)) {
-        console.error('Axios error response:', error.response?.data);
-        console.error('Axios error status:', error.response?.status);
-        console.error('Axios error headers:', error.response?.headers);
-        console.error('Axios error code:', error.code);
-        console.error('Axios error message:', error.message);
         
         // Store the error for potential retry
         if (error.code === 'ENOTFOUND') {
@@ -445,7 +416,6 @@ export class TestRunner {
           lastError = new Error(`Network error: ${error.message}`);
         }
       } else {
-        console.error('Non-axios error:', error);
         lastError = new Error(`Request failed: ${(error as Error).message || 'Unknown error'}`);
       }
       
@@ -530,12 +500,6 @@ export class TestRunner {
     // 4. Support variable interpolation
     
     // For now, we'll return a mock result to demonstrate the functionality
-    console.log('Executing SQL query:', {
-      connectionString: config.connectionString,
-      query: config.query,
-      parameters: config.parameters
-    });
-
     // Mock result - ensure it has proper output structure
     const result = {
       rows: [
@@ -548,7 +512,6 @@ export class TestRunner {
       summary: `Query executed successfully. ${2} rows returned in ${45}ms.`
     };
     
-    console.log('SQL step returning result:', result);
     return result;
     
     // TODO: Implement actual SQL execution

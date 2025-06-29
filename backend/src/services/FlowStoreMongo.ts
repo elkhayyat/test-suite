@@ -1,10 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
-import { TestFlow } from '../../../shared/src/types';
+import { TestFlow, IFlowStore } from '../../../shared/src/types';
 import { sampleFlows } from './SampleFlows';
 import { MongoDB } from '../db/mongodb';
 
-export class FlowStore {
+export class FlowStore implements IFlowStore {
   private mongodb: MongoDB;
+  public flows: Map<string, TestFlow> = new Map();
 
   constructor(mongodb: MongoDB) {
     this.mongodb = mongodb;
@@ -13,6 +14,9 @@ export class FlowStore {
 
   private async initialize() {
     try {
+      // Load flows from database
+      await this.loadFlowsFromDatabase();
+      
       const collections = this.mongodb.getCollections();
       
       // Check if we have any flows
@@ -26,6 +30,20 @@ export class FlowStore {
       }
     } catch (error) {
       console.error('Failed to initialize flow store:', error);
+    }
+  }
+
+  async loadFlowsFromDatabase(): Promise<void> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const flows = await collections.flows.find({}).toArray();
+      this.flows.clear();
+      flows.forEach(flow => {
+        this.flows.set(flow.id, flow);
+      });
+      console.log(`Loaded ${flows.length} flows from database`);
+    } catch (error) {
+      console.error('Failed to load flows from database:', error);
     }
   }
 

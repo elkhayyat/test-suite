@@ -39,6 +39,7 @@ export class ProjectStore {
     
     return {
       id,
+      organizationId: 'default',
       name: data.name!,
       description: data.description,
       createdAt: now,

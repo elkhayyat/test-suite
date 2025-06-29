@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -13,11 +13,14 @@ import {
   ChevronRight as ChevronRightIcon,
   Folder as FolderIcon,
   Description as FlowIcon,
-  MoreVert as MoreVertIcon,
   PlayArrow as PlayArrowIcon,
-  Edit as EditIcon,
   Delete as DeleteIcon,
   ContentCopy as ContentCopyIcon,
+  Add as AddIcon,
+  PlaylistPlay as PlaylistPlayIcon,
+  CreateNewFolder as CreateNewFolderIcon,
+  Upload as UploadIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
 import { TestFlow, Project, Folder } from '../../../shared/src/types';
 import { useNavigate } from 'react-router-dom';
@@ -30,6 +33,19 @@ interface FlowTreeProps {
   onFlowDelete: (flowId: string, flowName: string) => void;
   onFlowDuplicate: (flow: TestFlow) => void;
   onFlowRun: (flowId: string) => void;
+  onFolderCreateFlow: (folderId: string, projectId: string) => void;
+  onFolderRunAllFlows: (folderId: string) => void;
+  onFolderDuplicate: (folder: Folder) => void;
+  onFolderDelete: (folderId: string, folderName: string, projectId: string) => void;
+  onFolderImport: (folderId: string, projectId: string) => void;
+  onFolderExport: (folderId: string) => void;
+  onProjectCreateFlow: (projectId: string) => void;
+  onProjectCreateFolder: (projectId: string) => void;
+  onProjectRunAllFlows: (projectId: string) => void;
+  onProjectDuplicate: (project: Project) => void;
+  onProjectDelete: (projectId: string, projectName: string) => void;
+  onProjectImport: (projectId: string) => void;
+  onProjectExport: (projectId: string) => void;
 }
 
 interface DragItem {
@@ -47,11 +63,26 @@ export default function FlowTree({
   onFlowDelete,
   onFlowDuplicate,
   onFlowRun,
+  onFolderCreateFlow,
+  onFolderRunAllFlows,
+  onFolderDuplicate,
+  onFolderDelete,
+  onFolderImport,
+  onFolderExport,
+  onProjectCreateFlow,
+  onProjectCreateFolder,
+  onProjectRunAllFlows,
+  onProjectDuplicate,
+  onProjectDelete,
+  onProjectImport,
+  onProjectExport,
 }: FlowTreeProps) {
   const navigate = useNavigate();
   const [expandedProjects, setExpandedProjects] = useState<{ [projectId: string]: boolean }>({});
   const [expandedFolders, setExpandedFolders] = useState<{ [folderId: string]: boolean }>({});
   const [anchorEl, setAnchorEl] = useState<{ [flowId: string]: HTMLElement | null }>({});
+  const [folderAnchorEl, setFolderAnchorEl] = useState<{ [folderId: string]: HTMLElement | null }>({});
+  const [projectAnchorEl, setProjectAnchorEl] = useState<{ [projectId: string]: HTMLElement | null }>({});
   const [draggedItem, setDraggedItem] = useState<DragItem | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<{ type: 'project' | 'folder' | null; id?: string }>({ type: null });
 
@@ -78,12 +109,50 @@ export default function FlowTree({
     }));
   };
 
-  const handleMenuOpen = (event: React.MouseEvent<HTMLButtonElement>, flowId: string) => {
-    setAnchorEl(prev => ({ ...prev, [flowId]: event.currentTarget }));
+  const handleMenuOpen = (event: React.MouseEvent, flowId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setAnchorEl(prev => ({ ...prev, [flowId]: event.currentTarget as HTMLElement }));
   };
 
   const handleMenuClose = (flowId: string) => {
     setAnchorEl(prev => ({ ...prev, [flowId]: null }));
+  };
+
+  const handleFolderMenuOpen = (event: React.MouseEvent, folderId: string) => {
+    // Always prevent default to stop browser context menu
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Ensure it's a right-click (button 2) or context menu event
+    if (event.button === 2 || event.type === 'contextmenu') {
+      setFolderAnchorEl(prev => ({ ...prev, [folderId]: event.currentTarget as HTMLElement }));
+      return false; // Additional prevention
+    }
+    
+    return false; // Always return false to prevent default
+  };
+
+  const handleFolderMenuClose = (folderId: string) => {
+    setFolderAnchorEl(prev => ({ ...prev, [folderId]: null }));
+  };
+
+  const handleProjectMenuOpen = (event: React.MouseEvent, projectId: string) => {
+    // Always prevent default to stop browser context menu
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Ensure it's a right-click (button 2) or context menu event
+    if (event.button === 2 || event.type === 'contextmenu') {
+      setProjectAnchorEl(prev => ({ ...prev, [projectId]: event.currentTarget as HTMLElement }));
+      return false; // Additional prevention
+    }
+    
+    return false; // Always return false to prevent default
+  };
+
+  const handleProjectMenuClose = (projectId: string) => {
+    setProjectAnchorEl(prev => ({ ...prev, [projectId]: null }));
   };
 
   const handleDragStart = (e: React.DragEvent, flow: TestFlow) => {
@@ -169,16 +238,47 @@ export default function FlowTree({
     setDraggedItem(null);
   };
 
+  // Memoized flow filtering - expensive operations when flows list is large
+  const flowsByProject = useMemo(() => {
+    const projectFlows: { [projectId: string]: TestFlow[] } = {};
+    flows.forEach(flow => {
+      if (flow.projectId && !flow.folderId) {
+        if (!projectFlows[flow.projectId]) {
+          projectFlows[flow.projectId] = [];
+        }
+        projectFlows[flow.projectId].push(flow);
+      }
+    });
+    return projectFlows;
+  }, [flows]);
+
+  const flowsByFolder = useMemo(() => {
+    const folderFlows: { [folderId: string]: TestFlow[] } = {};
+    flows.forEach(flow => {
+      if (flow.folderId) {
+        if (!folderFlows[flow.folderId]) {
+          folderFlows[flow.folderId] = [];
+        }
+        folderFlows[flow.folderId].push(flow);
+      }
+    });
+    return folderFlows;
+  }, [flows]);
+
+  const unassignedFlows = useMemo(() => {
+    return flows.filter(flow => !flow.projectId);
+  }, [flows]);
+
   const getFlowsForProject = (projectId: string) => {
-    return flows.filter(flow => flow.projectId === projectId && !flow.folderId);
+    return flowsByProject[projectId] || [];
   };
 
   const getFlowsForFolder = (folderId: string) => {
-    return flows.filter(flow => flow.folderId === folderId);
+    return flowsByFolder[folderId] || [];
   };
 
   const getUnassignedFlows = () => {
-    return flows.filter(flow => !flow.projectId);
+    return unassignedFlows;
   };
 
   const renderFlow = (flow: TestFlow) => (
@@ -187,13 +287,15 @@ export default function FlowTree({
       draggable
       onDragStart={(e) => handleDragStart(e, flow)}
       onDragEnd={handleDragEnd}
+      onContextMenu={(e) => handleMenuOpen(e, flow.id)}
+      onClick={() => navigate(`/flows/${flow.id}`)}
       sx={{
         display: 'flex',
         alignItems: 'center',
         gap: 1,
         p: 1,
         pl: 4,
-        cursor: 'move',
+        cursor: 'pointer',
         '&:hover': {
           backgroundColor: 'action.hover',
         },
@@ -203,32 +305,18 @@ export default function FlowTree({
       <Typography variant="body2" sx={{ flex: 1 }}>
         {flow.name}
       </Typography>
-      <IconButton
-        size="small"
-        onClick={() => navigate(`/flows/${flow.id}`)}
-        sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}
-      >
-        <EditIcon fontSize="small" />
-      </IconButton>
-      <IconButton
-        size="small"
-        onClick={() => onFlowRun(flow.id)}
-        sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}
-      >
-        <PlayArrowIcon fontSize="small" />
-      </IconButton>
-      <IconButton
-        size="small"
-        onClick={(e) => handleMenuOpen(e, flow.id)}
-        sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}
-      >
-        <MoreVertIcon fontSize="small" />
-      </IconButton>
       <Menu
         anchorEl={anchorEl[flow.id]}
         open={Boolean(anchorEl[flow.id])}
         onClose={() => handleMenuClose(flow.id)}
       >
+        <MenuItem onClick={() => {
+          onFlowRun(flow.id);
+          handleMenuClose(flow.id);
+        }}>
+          <PlayArrowIcon fontSize="small" sx={{ mr: 1 }} />
+          Run Flow
+        </MenuItem>
         <MenuItem onClick={() => {
           onFlowDuplicate(flow);
           handleMenuClose(flow.id);
@@ -259,6 +347,7 @@ export default function FlowTree({
           onDragEnter={(e) => handleDragEnter(e, 'folder', folder.id)}
           onDragLeave={handleDragLeave}
           onDrop={(e) => handleDrop(e, 'folder', folder.id)}
+          onContextMenu={(e) => handleFolderMenuOpen(e, folder.id)}
           sx={{
             display: 'flex',
             alignItems: 'center',
@@ -284,6 +373,54 @@ export default function FlowTree({
             {folderFlows.length} flows
           </Typography>
         </Box>
+        <Menu
+          anchorEl={folderAnchorEl[folder.id]}
+          open={Boolean(folderAnchorEl[folder.id])}
+          onClose={() => handleFolderMenuClose(folder.id)}
+        >
+          <MenuItem onClick={() => {
+            onFolderCreateFlow(folder.id, folder.projectId);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <AddIcon fontSize="small" sx={{ mr: 1 }} />
+            Create Flow
+          </MenuItem>
+          <MenuItem onClick={() => {
+            onFolderRunAllFlows(folder.id);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <PlaylistPlayIcon fontSize="small" sx={{ mr: 1 }} />
+            Run All Flows
+          </MenuItem>
+          <MenuItem onClick={() => {
+            onFolderImport(folder.id, folder.projectId);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <UploadIcon fontSize="small" sx={{ mr: 1 }} />
+            Import Flows
+          </MenuItem>
+          <MenuItem onClick={() => {
+            onFolderExport(folder.id);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <DownloadIcon fontSize="small" sx={{ mr: 1 }} />
+            Export Folder
+          </MenuItem>
+          <MenuItem onClick={() => {
+            onFolderDuplicate(folder);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <ContentCopyIcon fontSize="small" sx={{ mr: 1 }} />
+            Duplicate
+          </MenuItem>
+          <MenuItem onClick={() => {
+            onFolderDelete(folder.id, folder.name, folder.projectId);
+            handleFolderMenuClose(folder.id);
+          }}>
+            <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+            Delete
+          </MenuItem>
+        </Menu>
         <Collapse in={isExpanded}>
           <Box sx={{ pl: 2 }}>
             {folderFlows.map(renderFlow)}
@@ -323,6 +460,7 @@ export default function FlowTree({
               },
             }}
             onClick={() => handleToggleProject(project.id)}
+            onContextMenu={(e) => handleProjectMenuOpen(e, project.id)}
           >
             <IconButton size="small" sx={{ p: 0.5 }}>
               {isExpanded ? <ExpandMoreIcon /> : <ChevronRightIcon />}
@@ -342,25 +480,85 @@ export default function FlowTree({
               {projectFlows.map(renderFlow)}
             </Box>
           </Collapse>
+          <Menu
+            anchorEl={projectAnchorEl[project.id]}
+            open={Boolean(projectAnchorEl[project.id])}
+            onClose={() => handleProjectMenuClose(project.id)}
+          >
+            <MenuItem onClick={() => {
+              onProjectCreateFlow(project.id);
+              handleProjectMenuClose(project.id);
+            }}>
+              <AddIcon fontSize="small" sx={{ mr: 1 }} />
+              Create Flow
+            </MenuItem>
+            <MenuItem onClick={() => {
+              onProjectCreateFolder(project.id);
+              handleProjectMenuClose(project.id);
+            }}>
+              <CreateNewFolderIcon fontSize="small" sx={{ mr: 1 }} />
+              Create Folder
+            </MenuItem>
+            <MenuItem onClick={() => {
+              onProjectRunAllFlows(project.id);
+              handleProjectMenuClose(project.id);
+            }}>
+              <PlaylistPlayIcon fontSize="small" sx={{ mr: 1 }} />
+              Run All Flows
+            </MenuItem>
+            <MenuItem onClick={() => {
+              onProjectImport(project.id);
+              handleProjectMenuClose(project.id);
+            }}>
+              <UploadIcon fontSize="small" sx={{ mr: 1 }} />
+              Import Project
+            </MenuItem>
+            <MenuItem onClick={() => {
+              onProjectExport(project.id);
+              handleProjectMenuClose(project.id);
+            }}>
+              <DownloadIcon fontSize="small" sx={{ mr: 1 }} />
+              Export Project
+            </MenuItem>
+            <MenuItem onClick={() => {
+              onProjectDuplicate(project);
+              handleProjectMenuClose(project.id);
+            }}>
+              <ContentCopyIcon fontSize="small" sx={{ mr: 1 }} />
+              Duplicate
+            </MenuItem>
+            <MenuItem onClick={() => {
+              onProjectDelete(project.id, project.name);
+              handleProjectMenuClose(project.id);
+            }}>
+              <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+              Delete
+            </MenuItem>
+          </Menu>
         </Paper>
       </Box>
     );
   };
 
-  const unassignedFlows = getUnassignedFlows();
+  const unassignedFlowsList = getUnassignedFlows();
 
   return (
-    <Box>
+    <Box onContextMenu={(e) => {
+      // If we reach here, it means no specific handler caught the event
+      // Prevent browser context menu globally in the tree
+      e.preventDefault();
+      return false;
+    }}>
       {projects.map(renderProject)}
       
-      {unassignedFlows.length > 0 && (
+      {unassignedFlowsList.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Paper elevation={1}>
             <Box sx={{ p: 1.5 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 1 }}>
                 Unassigned Flows
               </Typography>
-              {unassignedFlows.map(renderFlow)}
+              {unassignedFlowsList.map(renderFlow)}
             </Box>
           </Paper>
         </Box>

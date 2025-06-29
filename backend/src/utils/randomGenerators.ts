@@ -161,7 +161,7 @@ export function processRandomGenerators(input: string): string {
         });
       
       // Call generator with parsed arguments
-      const result = generator.generate(...args);
+      const result = (generator.generate as any)(...args);
       return JSON.stringify(result);
     } catch (error) {
       console.error(`Error generating random value for ${funcName}:`, error);

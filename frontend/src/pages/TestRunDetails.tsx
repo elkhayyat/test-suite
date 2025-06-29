@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
   Paper,
-  Button,
   Grid,
   Card,
   CardContent,
@@ -28,11 +27,9 @@ import HttpIcon from '@mui/icons-material/Http';
 import WebIcon from '@mui/icons-material/Web';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import ErrorIcon from '@mui/icons-material/Error';
 import TimerIcon from '@mui/icons-material/Timer';
 import CodeIcon from '@mui/icons-material/Code';
 import StorageIcon from '@mui/icons-material/Storage';
-import InfoIcon from '@mui/icons-material/Info';
 import { TestRun, TestStep, StepResult, ConsoleLog } from '../../../shared/src/types';
 import { api } from '../services/api';
 import StatusIndicator from '../components/StatusIndicator';
@@ -185,9 +182,11 @@ export default function TestRunDetails() {
     }));
   };
 
-  const formatDuration = (start: string, end?: string) => {
+  const formatDuration = (start: Date | string, end?: Date | string) => {
     if (!end) return 'Running...';
-    const duration = new Date(end).getTime() - new Date(start).getTime();
+    const startTime = typeof start === 'string' ? new Date(start) : start;
+    const endTime = typeof end === 'string' ? new Date(end) : end;
+    const duration = endTime.getTime() - startTime.getTime();
     if (duration < 1000) return `${duration}ms`;
     return `${(duration / 1000).toFixed(2)}s`;
   };
@@ -340,7 +339,7 @@ export default function TestRunDetails() {
             <Divider sx={{ mb: 3 }} />
 
             <Stepper orientation="vertical">
-              {flow.steps.map((step: TestStep, index: number) => {
+              {flow.steps.map((step: TestStep) => {
                 const result = getStepResult(step.id);
                 const isExpanded = expandedSteps[step.id];
 

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Project, Folder } from '../../../shared/src/types';
+import { Project, Folder, FolderTree } from '../../../shared/src/types';
 import { MongoDB } from '../db/mongodb';
 
 export class ProjectStore {
@@ -34,6 +34,7 @@ export class ProjectStore {
   async createProject(data: Partial<Project>): Promise<Project> {
     const project: Project = {
       id: data.id || uuidv4(),
+      organizationId: data.organizationId || 'default',
       name: data.name || 'New Project',
       description: data.description,
       createdAt: data.createdAt || new Date(),
@@ -194,8 +195,8 @@ export class ProjectStore {
       const folders = await this.getFolders(projectId);
       
       // Build tree structure
-      const tree: any[] = [];
-      const folderMap = new Map(folders.map(f => [f.id, { ...f, children: [] }]));
+      const tree: FolderTree[] = [];
+      const folderMap = new Map(folders.map(f => [f.id, { ...f, children: [] as FolderTree[] }]));
       
       folders.forEach(folder => {
         if (folder.parentId && folderMap.has(folder.parentId)) {

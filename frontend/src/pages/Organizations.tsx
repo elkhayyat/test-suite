@@ -66,7 +66,7 @@ export default function Organizations() {
   const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
   const [projectTeams, setProjectTeams] = useState<ProjectTeam[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [,] = useState<User[]>([]);
   const [tabValue, setTabValue] = useState(0);
   
   // Dialog states
@@ -80,7 +80,7 @@ export default function Organizations() {
   const [teamForm, setTeamForm] = useState<Partial<Team>>({ name: '', description: '' });
   const [userForm, setUserForm] = useState({ userId: '', role: 'member' as TeamUser['role'] });
   const [projectTeamForm, setProjectTeamForm] = useState({ projectId: '', permissions: 'read' as ProjectTeam['permissions'] });
-  const [importingOrgId, setImportingOrgId] = useState<string>('');
+  const [, setImportingOrgId] = useState<string>('');
 
   useEffect(() => {
     loadOrganizations();
@@ -139,7 +139,7 @@ export default function Organizations() {
       const allProjectTeams = await Promise.all(projectTeamPromises);
       
       const teamProjects: ProjectTeam[] = [];
-      allProjectTeams.forEach((pts, index) => {
+      allProjectTeams.forEach((pts) => {
         const teamProject = pts.find(pt => pt.teamId === team.id);
         if (teamProject) {
           teamProjects.push(teamProject);
