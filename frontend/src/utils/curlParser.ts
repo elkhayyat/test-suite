@@ -46,8 +46,10 @@ export function parseCurlCommand(curlCommand: string): ParsedCurlCommand {
       const dataValue = tokens[i + 1];
       if (dataValue) {
         try {
-          // Try to parse as JSON
-          result.body = JSON.parse(dataValue);
+          // Try to parse as JSON to validate it, but store the original string
+          JSON.parse(dataValue);
+          // If parsing succeeds, store the original JSON string
+          result.body = dataValue;
         } catch {
           // If not JSON, store as string
           result.body = dataValue;
@@ -136,6 +138,8 @@ function tokenizeCurlCommand(command: string): string[] {
   let inQuotes = false;
   let quoteChar = '';
   let escaped = false;
+  let braceBraceDepth = 0;
+  let bracketDepth = 0;
 
   for (let i = 0; i < command.length; i++) {
     const char = command[i];
@@ -148,6 +152,7 @@ function tokenizeCurlCommand(command: string): string[] {
 
     if (char === '\\') {
       escaped = true;
+      current += char;
       continue;
     }
 
@@ -158,9 +163,26 @@ function tokenizeCurlCommand(command: string): string[] {
     }
 
     if (inQuotes && char === quoteChar) {
+      // Check if we're inside JSON structure - if so, preserve the quote
+      if (braceBraceDepth > 0 || bracketDepth > 0) {
+        current += char;
+        continue;
+      }
       inQuotes = false;
       quoteChar = '';
       continue;
+    }
+
+    if (inQuotes) {
+      if (char === '{') {
+        braceBraceDepth++;
+      } else if (char === '}') {
+        braceBraceDepth--;
+      } else if (char === '[') {
+        bracketDepth++;
+      } else if (char === ']') {
+        bracketDepth--;
+      }
     }
 
     if (!inQuotes && char === ' ') {

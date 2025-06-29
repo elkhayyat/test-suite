@@ -28,6 +28,8 @@ import { api } from '../services/api';
 import { parseCurlCommand, generateCurlCommand } from '../utils/curlParser';
 import StepReferenceField from './StepReferenceField';
 import { GENERATOR_FUNCTIONS } from '../utils/randomGenerators';
+import { useEnvironment } from '../contexts/EnvironmentContext';
+import { FrontendInterpolator } from '../utils/frontendInterpolator';
 
 interface StepConfigPanelProps {
   step: TestStep;
@@ -37,6 +39,7 @@ interface StepConfigPanelProps {
 }
 
 export default function StepConfigPanel({ step, onUpdate, onClose, availableSteps = [] }: StepConfigPanelProps) {
+  const { environmentVariables } = useEnvironment();
   const [headersText, setHeadersText] = useState('');
   const [bodyText, setBodyText] = useState('');
   const [availableFlows, setAvailableFlows] = useState<TestFlow[]>([]);
@@ -46,6 +49,7 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
   const [curlSuccess, setCurlSuccess] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [randomHelpOpen, setRandomHelpOpen] = useState(false);
+  const [stepReferenceNote, setStepReferenceNote] = useState<string | null>(null);
   
   useEffect(() => {
     if (step.type === 'http') {
@@ -137,7 +141,23 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
   const handleCurlExport = () => {
     try {
       const config = step.config as HttpStepConfig;
-      const curlCmd = generateCurlCommand(config);
+      const interpolator = new FrontendInterpolator(environmentVariables);
+      
+      // Create a copy of the config with interpolated values
+      const interpolatedConfig: HttpStepConfig = {
+        ...config,
+        url: interpolator.interpolateValue(config.url) as string,
+        headers: interpolator.interpolateValue(config.headers) as Record<string, string>,
+        body: interpolator.interpolateValue(config.body),
+      };
+      
+      const curlCmd = generateCurlCommand(interpolatedConfig);
+      
+      // Check if there are any step references that couldn't be resolved
+      const configString = JSON.stringify(config);
+      const note = interpolator.getStepReferenceNote(configString);
+      setStepReferenceNote(note);
+      
       navigator.clipboard.writeText(curlCmd);
       setCurlSuccess(true);
       setTimeout(() => setCurlSuccess(false), 3000);
@@ -726,11 +746,25 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
       {/* Success/Error Snackbar */}
       <Snackbar
         open={curlSuccess}
-        autoHideDuration={3000}
-        onClose={() => setCurlSuccess(false)}
+        autoHideDuration={stepReferenceNote ? 6000 : 3000}
+        onClose={() => {
+          setCurlSuccess(false);
+          setStepReferenceNote(null);
+        }}
       >
-        <Alert severity="success" onClose={() => setCurlSuccess(false)}>
+        <Alert 
+          severity={stepReferenceNote ? "warning" : "success"} 
+          onClose={() => {
+            setCurlSuccess(false);
+            setStepReferenceNote(null);
+          }}
+        >
           {curlDialogOpen ? 'curl command imported successfully!' : 'curl command copied to clipboard!'}
+          {stepReferenceNote && (
+            <div style={{ marginTop: 8, fontSize: '0.875rem' }}>
+              {stepReferenceNote}
+            </div>
+          )}
         </Alert>
       </Snackbar>
 
