@@ -186,4 +186,11 @@ export class ProjectStore {
     
     return tree;
   }
+
+  // Add missing method for organization-based project retrieval
+  async getProjectsByOrganization(organizationId: string): Promise<Project[]> {
+    // Since SQLite version doesn't have organization support,
+    // we return all projects for now
+    return this.getProjects();
+  }
 }

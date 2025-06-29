@@ -121,6 +121,7 @@ export interface SubflowStepConfig {
 
 export interface Environment {
   id: string;
+  organizationId: string;
   name: string;
   description?: string;
   isDefault: boolean;
@@ -198,8 +199,48 @@ export interface User {
   name: string;
   role: 'admin' | 'developer' | 'tester' | 'viewer';
   organizationId?: string;
+  activeEnvironmentId?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface UserWithPassword extends User {
+  passwordHash: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  name: string;
+  organizationName?: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  user: User;
+  token: string;
+  organization?: Organization;
+}
+
+export interface InvitationRequest {
+  email: string;
+  teamId: string;
+  role: 'admin' | 'member' | 'viewer';
+}
+
+export interface InvitationResponse {
+  id: string;
+  email: string;
+  organizationId: string;
+  teamId: string;
+  role: string;
+  invitedBy: string;
+  expiresAt: Date;
+  createdAt: Date;
 }
 
 export interface ProjectUser {

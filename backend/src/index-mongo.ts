@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import axios from 'axios';
@@ -7,12 +8,17 @@ import { MongoDB } from './db/mongodb';
 import { FlowStore } from './services/FlowStoreMongo';
 import { EnvironmentStore } from './services/EnvironmentStoreMongo';
 import { ProjectStore } from './services/ProjectStoreMongo';
+import { UserStoreMongo } from './services/UserStoreMongo';
+import { OrganizationStoreMongo } from './services/OrganizationStoreMongo';
+import { AuthService } from './services/AuthService';
 import { TestRunner } from './services/TestRunner';
 import { flowRoutes } from './routes/flows-mongo';
 import { runRoutes } from './routes/runs';
 import { environmentRoutes } from './routes/environments-mongo';
 import { projectRoutes } from './routes/projects-mongo';
 import organizationRoutes from './routes/organizations';
+import { authRoutes } from './routes/authRoutes';
+import { authMiddleware } from './middleware/auth';
 
 async function startServer() {
   // Initialize MongoDB connection
@@ -23,6 +29,9 @@ async function startServer() {
   const flowStore = new FlowStore(mongodb);
   const environmentStore = new EnvironmentStore(mongodb);
   const projectStore = new ProjectStore(mongodb);
+  const userStore = new UserStoreMongo(mongodb.db);
+  const organizationStore = new OrganizationStoreMongo(mongodb.db);
+  const authService = new AuthService();
 
   const app = express();
   const httpServer = createServer(app);
@@ -38,17 +47,21 @@ async function startServer() {
     credentials: true
   }));
   app.use(express.json());
+  app.use(cookieParser());
 
   const testRunner = new TestRunner(io, flowStore, environmentStore);
 
   const API_BASE_PATH = process.env.API_BASE_PATH || '/api';
 
-  // Setup routes with stores
-  app.use(`${API_BASE_PATH}/flows`, flowRoutes(flowStore));
-  app.use(`${API_BASE_PATH}/runs`, runRoutes(testRunner));
-  app.use(`${API_BASE_PATH}/environments`, environmentRoutes(environmentStore));
-  app.use(`${API_BASE_PATH}/projects`, projectRoutes(projectStore, flowStore));
-  app.use(`${API_BASE_PATH}/organizations`, organizationRoutes);
+  // Auth routes (no auth required)
+  app.use(`${API_BASE_PATH}/auth`, authRoutes(authService, userStore, organizationStore));
+
+  // Protected routes (auth required)
+  app.use(`${API_BASE_PATH}/flows`, authMiddleware(authService), flowRoutes(flowStore, projectStore, organizationStore));
+  app.use(`${API_BASE_PATH}/runs`, authMiddleware(authService), runRoutes(testRunner));
+  app.use(`${API_BASE_PATH}/environments`, authMiddleware(authService), environmentRoutes(environmentStore));
+  app.use(`${API_BASE_PATH}/projects`, authMiddleware(authService), projectRoutes(projectStore, flowStore, organizationStore));
+  app.use(`${API_BASE_PATH}/organizations`, authMiddleware(authService), organizationRoutes);
 
   // Proxy endpoint for external API requests (CORS workaround)
   app.get(`${API_BASE_PATH}/proxy`, async (req, res) => {

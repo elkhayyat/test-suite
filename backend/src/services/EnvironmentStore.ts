@@ -8,6 +8,7 @@ export class EnvironmentStore implements IEnvironmentStore {
     const rows = await db.all('SELECT * FROM environments ORDER BY name');
     return rows.map(row => ({
       ...row,
+      organizationId: row.organization_id || 'default-org',
       isDefault: Boolean(row.is_default),
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
@@ -21,6 +22,7 @@ export class EnvironmentStore implements IEnvironmentStore {
     
     return {
       ...row,
+      organizationId: row.organization_id || 'default-org',
       isDefault: Boolean(row.is_default),
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
@@ -38,13 +40,14 @@ export class EnvironmentStore implements IEnvironmentStore {
     }
     
     await db.run(
-      `INSERT INTO environments (id, name, description, is_default, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, data.name, data.description || null, data.isDefault || false, now.toISOString(), now.toISOString()]
+      `INSERT INTO environments (id, organization_id, name, description, is_default, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, data.organizationId || 'default-org', data.name, data.description || null, data.isDefault || false, now.toISOString(), now.toISOString()]
     );
     
     return {
       id,
+      organizationId: data.organizationId || 'default-org',
       name: data.name!,
       description: data.description,
       isDefault: data.isDefault || false,

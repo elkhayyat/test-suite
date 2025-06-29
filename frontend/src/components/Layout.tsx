@@ -1,6 +1,7 @@
-import React, { useContext, useState, useEffect } from 'react';
-import { AppBar, Toolbar, Typography, Drawer, Box, IconButton, Tabs, Tab } from '@mui/material';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useContext, useState, useEffect } from 'react';
+import { AppBar, Toolbar, Typography, Drawer, Box, IconButton, Tabs, Tab, Menu, MenuItem, Button } from '@mui/material';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -13,6 +14,7 @@ import { ColorModeContext } from '../App';
 import FlowTree from './FlowTree';
 import EnvironmentSelector from './EnvironmentSelector';
 import { useEnvironment } from '../contexts/EnvironmentContext';
+import { useAuth } from '../contexts/AuthContext';
 import { TestFlow, Project, Folder } from '../../../shared/src/types';
 import { api } from '../services/api';
 
@@ -30,26 +32,25 @@ const Main = styled('main', { shouldForwardProp: (prop) => prop !== 'open' })<{
   marginLeft: 0,
 }));
 
-interface LayoutProps {
-  children: React.ReactNode;
-}
-
-export default function Layout({ children }: LayoutProps) {
+export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
   const colorMode = useContext(ColorModeContext);
   const { selectedEnvironment, setSelectedEnvironment } = useEnvironment();
+  const { user, organization, logout } = useAuth();
   const [flows, setFlows] = useState<TestFlow[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [folders, setFolders] = useState<{ [projectId: string]: Folder[] }>({});
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
     { text: 'Projects', icon: <AccountTreeIcon />, path: '/projects' },
     { text: 'Test Runs', icon: <PlayArrowIcon />, path: '/runs' },
     { text: 'Environments', icon: <SettingsIcon />, path: '/environments' },
-    { text: 'Organizations', icon: <BusinessIcon />, path: '/organizations' },
+    // Only show Organizations to admin users
+    ...(user?.role === 'admin' ? [{ text: 'Organizations', icon: <BusinessIcon />, path: '/organizations' }] : []),
   ];
 
   // Load data for the explorer
@@ -637,6 +638,42 @@ export default function Layout({ children }: LayoutProps) {
           <IconButton sx={{ ml: 1 }} onClick={colorMode.toggleColorMode} color="inherit">
             {theme.palette.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
           </IconButton>
+          
+          {/* User Menu */}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Button
+              color="inherit"
+              onClick={(e) => setAnchorEl(e.currentTarget)}
+              startIcon={<AccountCircleIcon />}
+              sx={{ ml: 2 }}
+            >
+              {user?.name || 'User'}
+            </Button>
+            <Menu
+              anchorEl={anchorEl}
+              open={Boolean(anchorEl)}
+              onClose={() => setAnchorEl(null)}
+            >
+              <MenuItem disabled>
+                <Typography variant="body2">
+                  {user?.email}
+                </Typography>
+              </MenuItem>
+              {organization && (
+                <MenuItem disabled>
+                  <Typography variant="body2">
+                    {organization.name}
+                  </Typography>
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => {
+                logout();
+                navigate('/login');
+              }}>
+                Logout
+              </MenuItem>
+            </Menu>
+          </Box>
         </Toolbar>
       </AppBar>
       
@@ -693,7 +730,7 @@ export default function Layout({ children }: LayoutProps) {
       
       <Main>
         <Toolbar />
-        {children}
+        <Outlet />
       </Main>
     </Box>
   );

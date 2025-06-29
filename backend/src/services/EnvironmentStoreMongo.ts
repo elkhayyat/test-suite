@@ -9,6 +9,17 @@ export class EnvironmentStore implements IEnvironmentStore {
     this.mongodb = mongodb;
   }
 
+  async getEnvironmentsByOrganization(organizationId: string): Promise<Environment[]> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const environments = await collections.environments.find({ organizationId }).toArray();
+      return environments;
+    } catch (error) {
+      console.error('Failed to get environments by organization:', error);
+      return [];
+    }
+  }
+
   async getAllEnvironments(): Promise<Environment[]> {
     try {
       const collections = this.mongodb.getCollections();
@@ -34,6 +45,7 @@ export class EnvironmentStore implements IEnvironmentStore {
   async createEnvironment(data: Partial<Environment>): Promise<Environment> {
     const environment: Environment = {
       id: data.id || uuidv4(),
+      organizationId: data.organizationId || 'default-org',
       name: data.name || 'New Environment',
       description: data.description,
       isDefault: data.isDefault || false,
@@ -44,10 +56,10 @@ export class EnvironmentStore implements IEnvironmentStore {
     try {
       const collections = this.mongodb.getCollections();
       
-      // If this is set as default, unset any existing defaults
+      // If this is set as default, unset any existing defaults in the same organization
       if (environment.isDefault) {
         await collections.environments.updateMany(
-          { isDefault: true },
+          { isDefault: true, organizationId: environment.organizationId },
           { $set: { isDefault: false } }
         );
       }
@@ -72,12 +84,15 @@ export class EnvironmentStore implements IEnvironmentStore {
       // Remove id from update data
       delete updateData.id;
       
-      // If setting as default, unset any existing defaults
+      // If setting as default, unset any existing defaults in the same organization
       if (updateData.isDefault) {
-        await collections.environments.updateMany(
-          { isDefault: true, id: { $ne: id } },
-          { $set: { isDefault: false } }
-        );
+        const env = await collections.environments.findOne({ id });
+        if (env) {
+          await collections.environments.updateMany(
+            { isDefault: true, organizationId: env.organizationId, id: { $ne: id } },
+            { $set: { isDefault: false } }
+          );
+        }
       }
       
       const result = await collections.environments.findOneAndUpdate(

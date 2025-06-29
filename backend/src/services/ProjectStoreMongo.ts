@@ -212,4 +212,16 @@ export class ProjectStore {
       return [];
     }
   }
+
+  // Add missing method for organization-based project retrieval
+  async getProjectsByOrganization(organizationId: string): Promise<Project[]> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const projects = await collections.projects.find({ organizationId }).toArray();
+      return projects;
+    } catch (error) {
+      console.error('Failed to get projects by organization:', error);
+      return [];
+    }
+  }
 }

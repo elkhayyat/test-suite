@@ -17,7 +17,7 @@ export interface DbCollections {
 
 export class MongoDB {
   private client: MongoClient;
-  private db: Db;
+  public db: Db;  // Made public to fix compilation error
   private collections: DbCollections;
 
   constructor() {
@@ -78,16 +78,19 @@ export class MongoDB {
     // Flows indexes
     await this.collections.flows.createIndex({ projectId: 1 });
     await this.collections.flows.createIndex({ folderId: 1 });
+    await this.collections.flows.createIndex({ name: 1, projectId: 1 });
     
     // Environment indexes
-    await this.collections.environments.createIndex({ name: 1 }, { unique: true });
+    await this.collections.environments.createIndex({ organizationId: 1 });
+    await this.collections.environments.createIndex({ name: 1, organizationId: 1 }, { unique: true });
     await this.collections.environments.createIndex({ isDefault: 1 });
     
     // Environment variables indexes
     await this.collections.environmentVariables.createIndex({ environmentId: 1, key: 1 }, { unique: true });
     
     // Projects indexes
-    await this.collections.projects.createIndex({ name: 1 }, { unique: true });
+    await this.collections.projects.createIndex({ organizationId: 1 });
+    await this.collections.projects.createIndex({ name: 1, organizationId: 1 }, { unique: true });
     
     // Folders indexes
     await this.collections.folders.createIndex({ projectId: 1 });
@@ -136,6 +139,7 @@ export class MongoDB {
       // Create default environment
       await this.collections.environments.insertOne({
         id: 'default',
+        organizationId: defaultOrgId,
         name: 'Default',
         description: 'Default environment',
         isDefault: true,

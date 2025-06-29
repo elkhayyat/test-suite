@@ -1,13 +1,18 @@
 import { Router } from 'express';
 import { EnvironmentStore } from '../services/EnvironmentStoreMongo';
+import { AuthRequest } from '../middleware/auth';
 
 export const environmentRoutes = (environmentStore: EnvironmentStore) => {
   const router = Router();
 
-  // Get all environments
-  router.get('/', async (req, res) => {
+  // Get all environments for the user's organization
+  router.get('/', async (req: AuthRequest, res) => {
     try {
-      const environments = await environmentStore.getAllEnvironments();
+      if (!req.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+      
+      const environments = await environmentStore.getEnvironmentsByOrganization(req.user.organizationId);
       res.json(environments);
     } catch (error) {
       res.status(500).json({ error: 'Failed to get environments' });
@@ -15,12 +20,18 @@ export const environmentRoutes = (environmentStore: EnvironmentStore) => {
   });
 
   // Get single environment
-  router.get('/:id', async (req, res) => {
+  router.get('/:id', async (req: AuthRequest, res) => {
     try {
       const environment = await environmentStore.getEnvironment(req.params.id);
       if (!environment) {
         return res.status(404).json({ error: 'Environment not found' });
       }
+      
+      // Check if user has access to this environment
+      if (req.user && environment.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
       res.json(environment);
     } catch (error) {
       res.status(500).json({ error: 'Failed to get environment' });
@@ -28,9 +39,18 @@ export const environmentRoutes = (environmentStore: EnvironmentStore) => {
   });
 
   // Create environment
-  router.post('/', async (req, res) => {
+  router.post('/', async (req: AuthRequest, res) => {
     try {
-      const environment = await environmentStore.createEnvironment(req.body);
+      if (!req.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+      
+      const environmentData = {
+        ...req.body,
+        organizationId: req.user.organizationId
+      };
+      
+      const environment = await environmentStore.createEnvironment(environmentData);
       res.status(201).json(environment);
     } catch (error) {
       res.status(500).json({ error: 'Failed to create environment' });
@@ -38,12 +58,19 @@ export const environmentRoutes = (environmentStore: EnvironmentStore) => {
   });
 
   // Update environment
-  router.put('/:id', async (req, res) => {
+  router.put('/:id', async (req: AuthRequest, res) => {
     try {
-      const environment = await environmentStore.updateEnvironment(req.params.id, req.body);
-      if (!environment) {
+      const existingEnv = await environmentStore.getEnvironment(req.params.id);
+      if (!existingEnv) {
         return res.status(404).json({ error: 'Environment not found' });
       }
+      
+      // Check if user has access to this environment
+      if (req.user && existingEnv.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const environment = await environmentStore.updateEnvironment(req.params.id, req.body);
       res.json(environment);
     } catch (error) {
       res.status(500).json({ error: 'Failed to update environment' });
@@ -51,12 +78,24 @@ export const environmentRoutes = (environmentStore: EnvironmentStore) => {
   });
 
   // Delete environment
-  router.delete('/:id', async (req, res) => {
+  router.delete('/:id', async (req: AuthRequest, res) => {
     try {
-      const success = await environmentStore.deleteEnvironment(req.params.id);
-      if (!success) {
+      const environment = await environmentStore.getEnvironment(req.params.id);
+      if (!environment) {
         return res.status(404).json({ error: 'Environment not found' });
       }
+      
+      // Check if user has access to this environment
+      if (req.user && environment.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      // Don't allow deleting the default environment
+      if (environment.isDefault) {
+        return res.status(400).json({ error: 'Cannot delete default environment' });
+      }
+      
+      const success = await environmentStore.deleteEnvironment(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: 'Failed to delete environment' });
@@ -177,6 +216,7 @@ export const environmentRoutes = (environmentStore: EnvironmentStore) => {
 
       // Create new environment with "(Copy)" suffix
       const newEnv = await environmentStore.createEnvironment({
+        organizationId: sourceEnv.organizationId,
         name: `${sourceEnv.name} (Copy)`,
         description: sourceEnv.description,
         isDefault: false

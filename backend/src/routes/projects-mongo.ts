@@ -1,15 +1,23 @@
 import { Router } from 'express';
 import { ProjectStore } from '../services/ProjectStoreMongo';
 import { FlowStore } from '../services/FlowStoreMongo';
+import { OrganizationStoreMongo } from '../services/OrganizationStoreMongo';
+import { AuthRequest } from '../middleware/auth';
 import * as organizationsService from '../services/organizations';
 
-export const projectRoutes = (projectStore: ProjectStore, flowStore?: FlowStore) => {
+export const projectRoutes = (projectStore: ProjectStore, flowStore?: FlowStore, organizationStore?: OrganizationStoreMongo) => {
   const router = Router();
 
   // Get all projects
-  router.get('/', async (req, res) => {
+  router.get('/', async (req: AuthRequest, res) => {
     try {
-      const projects = await projectStore.getProjects();
+      if (!req.user) {
+        const projects = await projectStore.getProjects();
+        return res.json(projects);
+      }
+      
+      // Filter projects by user's organization
+      const projects = await projectStore.getProjectsByOrganization(req.user.organizationId);
       res.json(projects);
     } catch (error) {
       res.status(500).json({ error: 'Failed to get projects' });
@@ -17,12 +25,18 @@ export const projectRoutes = (projectStore: ProjectStore, flowStore?: FlowStore)
   });
 
   // Get single project
-  router.get('/:id', async (req, res) => {
+  router.get('/:id', async (req: AuthRequest, res) => {
     try {
       const project = await projectStore.getProject(req.params.id);
       if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
+      
+      // Check if user has access to this project
+      if (req.user && project.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
       res.json(project);
     } catch (error) {
       res.status(500).json({ error: 'Failed to get project' });
@@ -30,9 +44,14 @@ export const projectRoutes = (projectStore: ProjectStore, flowStore?: FlowStore)
   });
 
   // Create project
-  router.post('/', async (req, res) => {
+  router.post('/', async (req: AuthRequest, res) => {
     try {
-      const project = await projectStore.createProject(req.body);
+      const projectData = {
+        ...req.body,
+        organizationId: req.user?.organizationId || req.body.organizationId
+      };
+      
+      const project = await projectStore.createProject(projectData);
       res.status(201).json(project);
     } catch (error) {
       res.status(500).json({ error: 'Failed to create project' });
@@ -40,12 +59,19 @@ export const projectRoutes = (projectStore: ProjectStore, flowStore?: FlowStore)
   });
 
   // Update project
-  router.put('/:id', async (req, res) => {
+  router.put('/:id', async (req: AuthRequest, res) => {
     try {
-      const project = await projectStore.updateProject(req.params.id, req.body);
-      if (!project) {
+      const existingProject = await projectStore.getProject(req.params.id);
+      if (!existingProject) {
         return res.status(404).json({ error: 'Project not found' });
       }
+      
+      // Check if user has access to this project
+      if (req.user && existingProject.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const project = await projectStore.updateProject(req.params.id, req.body);
       res.json(project);
     } catch (error) {
       res.status(500).json({ error: 'Failed to update project' });
@@ -53,12 +79,24 @@ export const projectRoutes = (projectStore: ProjectStore, flowStore?: FlowStore)
   });
 
   // Delete project
-  router.delete('/:id', async (req, res) => {
+  router.delete('/:id', async (req: AuthRequest, res) => {
     try {
-      const success = await projectStore.deleteProject(req.params.id);
-      if (!success) {
+      const project = await projectStore.getProject(req.params.id);
+      if (!project) {
         return res.status(404).json({ error: 'Project not found' });
       }
+      
+      // Check if user has access to this project
+      if (req.user && project.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      // Check if user has admin role
+      if (req.user && !['admin', 'owner'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      
+      const success = await projectStore.deleteProject(req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: 'Failed to delete project' });

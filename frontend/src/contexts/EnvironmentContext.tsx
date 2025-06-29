@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Environment } from '../../../shared/src/types';
 import { api } from '../services/api';
+import { authApi } from '../services/authApi';
+import { useAuth } from './AuthContext';
 
 interface EnvironmentContextType {
   selectedEnvironment: string;
@@ -17,24 +19,35 @@ interface EnvironmentProviderProps {
 }
 
 export function EnvironmentProvider({ children }: EnvironmentProviderProps) {
-  const [selectedEnvironment, setSelectedEnvironment] = useState<string>(() => {
-    // Load from localStorage on initialization
-    const saved = localStorage.getItem('selectedEnvironment');
-    return saved || '';
-  });
+  const { user } = useAuth();
+  const [selectedEnvironment, setSelectedEnvironment] = useState<string>('');
   const [environmentVariables, setEnvironmentVariables] = useState<{ [key: string]: string }>({});
   const [environments, setEnvironments] = useState<Environment[]>([]);
 
-  // Wrapper function to save to localStorage when environment changes
-  const handleSetSelectedEnvironment = (environmentId: string) => {
+  // Wrapper function to save to user profile when environment changes
+  const handleSetSelectedEnvironment = async (environmentId: string) => {
     setSelectedEnvironment(environmentId);
-    localStorage.setItem('selectedEnvironment', environmentId);
+    
+    // Save to user profile if authenticated
+    if (user) {
+      try {
+        await authApi.setActiveEnvironment(environmentId);
+      } catch (error) {
+        console.error('Failed to save active environment:', error);
+      }
+    }
   };
 
-  // Load environments on mount
+  // Load environments when user changes
   useEffect(() => {
-    loadEnvironments();
-  }, []);
+    if (user) {
+      loadEnvironments();
+      // Set selected environment from user profile
+      if (user.activeEnvironmentId) {
+        setSelectedEnvironment(user.activeEnvironmentId);
+      }
+    }
+  }, [user]);
 
   // Load environment variables when selected environment changes
   useEffect(() => {
@@ -65,8 +78,12 @@ export function EnvironmentProvider({ children }: EnvironmentProviderProps) {
       const data = await api.getEnvironments();
       setEnvironments(data);
       
-      // Check if saved environment still exists
-      if (selectedEnvironment && data.length > 0) {
+      // If user has active environment, use it
+      if (user?.activeEnvironmentId && data.some(env => env.id === user.activeEnvironmentId)) {
+        setSelectedEnvironment(user.activeEnvironmentId);
+      }
+      // Check if current environment still exists
+      else if (selectedEnvironment && data.length > 0) {
         const savedEnvExists = data.some(env => env.id === selectedEnvironment);
         if (!savedEnvExists) {
           // Saved environment no longer exists, select default

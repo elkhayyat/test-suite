@@ -2,11 +2,20 @@ import { Router, Request, Response } from 'express';
 import * as organizationsService from '../services/organizations';
 import { getDB } from '../db/mongodb';
 import { v4 as uuidv4 } from 'uuid';
+import { AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
-// Organization routes
-router.get('/', async (req: Request, res: Response) => {
+// Middleware to check admin role
+const requireAdmin = (req: AuthRequest, res: Response, next: any) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+};
+
+// Organization routes (admin only)
+router.get('/', requireAdmin, async (req: Request, res: Response) => {
   try {
     const organizations = await organizationsService.getOrganizations();
     res.json(organizations);
@@ -15,7 +24,7 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
     const organization = await organizationsService.getOrganization(req.params.id);
     if (!organization) {
@@ -27,7 +36,7 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', requireAdmin, async (req: Request, res: Response) => {
   try {
     console.log('POST /organizations request body:', req.body);
     const organization = await organizationsService.createOrganization(req.body);
@@ -42,7 +51,7 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
     const organization = await organizationsService.updateOrganization(req.params.id, req.body);
     if (!organization) {
@@ -54,7 +63,7 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
     const deleted = await organizationsService.deleteOrganization(req.params.id);
     if (!deleted) {

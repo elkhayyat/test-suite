@@ -10,7 +10,11 @@ import TestRunDetails from './pages/TestRunDetails';
 import Environments from './pages/Environments';
 import Projects from './pages/Projects';
 import Organizations from './pages/Organizations';
+import { Login } from './pages/Login';
+import { Register } from './pages/Register';
 import { EnvironmentProvider } from './contexts/EnvironmentContext';
+import { AuthProvider } from './contexts/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 
 interface ThemeContextType {
@@ -207,56 +211,74 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <ErrorBoundary>
-          <EnvironmentProvider>
-            <Router>
-              <Layout>
-                <ErrorBoundary>
-                  <Routes>
+          <Router>
+            <AuthProvider>
+              <EnvironmentProvider>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route element={<Layout />}>
                     <Route path="/" element={
-                      <ErrorBoundary>
-                        <FlowsOrganizer />
-                      </ErrorBoundary>
+                      <ProtectedRoute>
+                        <ErrorBoundary>
+                          <FlowsOrganizer />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
                     } />
                     <Route path="/projects" element={
-                      <ErrorBoundary>
-                        <Projects />
-                      </ErrorBoundary>
+                      <ProtectedRoute>
+                        <ErrorBoundary>
+                          <Projects />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
                     } />
                     <Route path="/flows/new" element={
-                      <ErrorBoundary>
-                        <FlowEditor />
-                      </ErrorBoundary>
+                      <ProtectedRoute>
+                        <ErrorBoundary>
+                          <FlowEditor />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
                     } />
                     <Route path="/flows/:id" element={
-                      <ErrorBoundary>
-                        <FlowEditor />
-                      </ErrorBoundary>
+                      <ProtectedRoute>
+                        <ErrorBoundary>
+                          <FlowEditor />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
                     } />
                     <Route path="/runs" element={
-                      <ErrorBoundary>
-                        <TestRuns />
-                      </ErrorBoundary>
+                      <ProtectedRoute>
+                        <ErrorBoundary>
+                          <TestRuns />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
                     } />
                     <Route path="/runs/:runId" element={
-                      <ErrorBoundary>
-                        <TestRunDetails />
-                      </ErrorBoundary>
+                      <ProtectedRoute>
+                        <ErrorBoundary>
+                          <TestRunDetails />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
                     } />
                     <Route path="/environments" element={
-                      <ErrorBoundary>
-                        <Environments />
-                      </ErrorBoundary>
+                      <ProtectedRoute>
+                        <ErrorBoundary>
+                          <Environments />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
                     } />
                     <Route path="/organizations" element={
-                      <ErrorBoundary>
-                        <Organizations />
-                      </ErrorBoundary>
+                      <ProtectedRoute requiredRole={['admin']}>
+                        <ErrorBoundary>
+                          <Organizations />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
                     } />
-                  </Routes>
-                </ErrorBoundary>
-              </Layout>
-            </Router>
-          </EnvironmentProvider>
+                  </Route>
+                </Routes>
+              </EnvironmentProvider>
+            </AuthProvider>
+          </Router>
         </ErrorBoundary>
       </ThemeProvider>
     </ColorModeContext.Provider>
