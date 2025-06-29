@@ -17,6 +17,7 @@ import {
   Alert,
   Tabs,
   Tab,
+  Tooltip,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -30,12 +31,14 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import TimerIcon from '@mui/icons-material/Timer';
 import CodeIcon from '@mui/icons-material/Code';
 import StorageIcon from '@mui/icons-material/Storage';
+import DownloadIcon from '@mui/icons-material/Download';
 import { TestRun, TestStep, StepResult, ConsoleLog } from '../../../shared/src/types';
 import { api } from '../services/api';
 import StatusIndicator from '../components/StatusIndicator';
 import InteractiveConsole from '../components/InteractiveConsole';
 import { ConsoleCommandExecutor } from '../services/ConsoleCommandExecutor';
 import { useSocket } from '../hooks/useSocket';
+import { generatePDFReport } from '../utils/pdfReportGenerator';
 
 export default function TestRunDetails() {
   const { runId } = useParams();
@@ -236,9 +239,26 @@ export default function TestRunDetails() {
         <IconButton onClick={() => navigate('/runs')} sx={{ color: '#667eea' }}>
           <ArrowBackIcon />
         </IconButton>
-        <Typography variant="h4" className="text-gradient">
+        <Typography variant="h4" className="text-gradient" sx={{ flex: 1 }}>
           Test Run Details
         </Typography>
+        <Tooltip title="Download PDF Report">
+          <IconButton 
+            onClick={() => generatePDFReport({
+              id: run.id,
+              flowName: flow.name,
+              status: run.status,
+              startTime: run.startTime.toString(),
+              endTime: run.endTime?.toString(),
+              duration: run.endTime ? new Date(run.endTime).getTime() - new Date(run.startTime).getTime() : undefined,
+              environment: run.environmentId,
+              results: run.results
+            }, flow)}
+            sx={{ color: '#667eea' }}
+          >
+            <DownloadIcon />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       <Grid container spacing={3}>
