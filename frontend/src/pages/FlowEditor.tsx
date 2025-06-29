@@ -18,7 +18,7 @@ import ContextMenu from '../components/ContextMenu';
 import { ConsoleCommandExecutor } from '../services/ConsoleCommandExecutor';
 import OpenAPIImportDialog from '../components/OpenAPIImportDialog';
 import useDebounce from '../hooks/useDebounce';
-import useKeyboardShortcuts, { KeyboardShortcutGroup, commonShortcuts } from '../hooks/useKeyboardShortcuts';
+import useKeyboardShortcuts, { KeyboardShortcutGroup } from '../hooks/useKeyboardShortcuts';
 import KeyboardShortcutsDialog from '../components/KeyboardShortcutsDialog';
 import useFlowUndoRedo from '../hooks/useFlowUndoRedo';
 import useMultiSelection from '../hooks/useMultiSelection';
@@ -163,7 +163,7 @@ export default function FlowEditor() {
   } = testExecutionState;
 
   // Clipboard state (keeping separate as it's simple and has special localStorage logic)
-  const [clipboard, setClipboard] = useState<TestStep[] | null>(() => {
+  const [clipboard, setClipboard] = useState<TestStep[] | TestStep | null>(() => {
     const saved = localStorage.getItem('stepClipboard');
     if (saved) {
       const parsed = JSON.parse(saved);
@@ -175,10 +175,9 @@ export default function FlowEditor() {
 
   // Helper function to update clipboard and localStorage
   const updateClipboard = (steps: TestStep[] | TestStep | null) => {
-    const clipboardData = steps === null ? null : Array.isArray(steps) ? steps : [steps];
-    setClipboard(clipboardData);
-    if (clipboardData) {
-      localStorage.setItem('stepClipboard', JSON.stringify(clipboardData));
+    setClipboard(steps);
+    if (steps) {
+      localStorage.setItem('stepClipboard', JSON.stringify(steps));
     } else {
       localStorage.removeItem('stepClipboard');
     }
@@ -871,18 +870,44 @@ export default function FlowEditor() {
   const handleContextMenuPaste = useCallback(() => {
     try {
       if (clipboard && contextMenuNode) {
-        const newNode: Node = {
-          id: `${Date.now()}`,
-          type: 'testStep',
-          position: calculateOffsetPosition(contextMenuNode.position),
-          data: {
-            ...clipboard,
+        if (Array.isArray(clipboard)) {
+          // Paste multiple items
+          clipboard.forEach((step, index) => {
+            const newNode: Node = {
+              id: `${Date.now()}-${index}`,
+              type: 'testStep',
+              position: {
+                x: contextMenuNode.position.x + (index * 20),
+                y: contextMenuNode.position.y + (index * 120)
+              },
+              data: {
+                ...step,
+                id: `${Date.now()}-${index}`,
+                name: `${step.name} (Copy)`,
+              },
+            };
+            undoableAddNode(newNode);
+          });
+          setSnackbar({ 
+            open: true, 
+            message: `Pasted ${clipboard.length} step${clipboard.length === 1 ? '' : 's'}`, 
+            severity: 'success' 
+          });
+        } else {
+          // Paste single item
+          const newNode: Node = {
             id: `${Date.now()}`,
-            name: `${clipboard.name} (Copy)`,
-          },
-        };
-        undoableAddNode(newNode);
-        setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+            type: 'testStep',
+            position: calculateOffsetPosition(contextMenuNode.position),
+            data: {
+              ...clipboard,
+              id: `${Date.now()}`,
+              name: `${clipboard.name} (Copy)`,
+            },
+          };
+          undoableAddNode(newNode);
+          setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+        }
         debouncedSetSaveStatus('unsaved');
       }
     } catch (error) {
@@ -893,7 +918,7 @@ export default function FlowEditor() {
         severity: 'error'
       });
     }
-  }, [clipboard, contextMenuNode, undoableAddNode, debouncedSetSaveStatus]);
+  }, [clipboard, contextMenuNode, undoableAddNode, debouncedSetSaveStatus, setSnackbar]);
 
   const handleContextMenuDuplicate = useCallback(() => {
     try {
