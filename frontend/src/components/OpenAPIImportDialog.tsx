@@ -63,6 +63,7 @@ export default function OpenAPIImportDialog({ open, onClose, onImport, projectId
   const [parsedAPI, setParsedAPI] = useState<ParsedOpenAPI | null>(null);
   const [selectedOperations, setSelectedOperations] = useState<string[]>([]);
   const [baseUrlOverride, setBaseUrlOverride] = useState('');
+  const [useCustomBaseUrl, setUseCustomBaseUrl] = useState(false);
   const [saveSchema, setSaveSchema] = useState(false);
   const [schemaName, setSchemaName] = useState('');
   const [schemaDescription, setSchemaDescription] = useState('');
@@ -120,6 +121,9 @@ export default function OpenAPIImportDialog({ open, onClose, onImport, projectId
       // Set default base URL if available
       if (parsed.servers.length > 0) {
         setBaseUrlOverride(parsed.servers[0]);
+        setUseCustomBaseUrl(false);
+      } else {
+        setUseCustomBaseUrl(true);
       }
       
       // Auto-populate schema name
@@ -191,6 +195,7 @@ export default function OpenAPIImportDialog({ open, onClose, onImport, projectId
     setParsedAPI(null);
     setSelectedOperations([]);
     setBaseUrlOverride('');
+    setUseCustomBaseUrl(false);
     setSaveSchema(false);
     setSchemaName('');
     setSchemaDescription('');
@@ -266,8 +271,16 @@ export default function OpenAPIImportDialog({ open, onClose, onImport, projectId
             <FormControl fullWidth margin="normal">
               <InputLabel>Base URL</InputLabel>
               <Select
-                value={baseUrlOverride}
-                onChange={(e) => setBaseUrlOverride(e.target.value)}
+                value={useCustomBaseUrl ? 'custom' : baseUrlOverride}
+                onChange={(e) => {
+                  if (e.target.value === 'custom') {
+                    setUseCustomBaseUrl(true);
+                    setBaseUrlOverride('');
+                  } else {
+                    setUseCustomBaseUrl(false);
+                    setBaseUrlOverride(e.target.value);
+                  }
+                }}
                 label="Base URL"
               >
                 {parsedAPI.servers.map((server, index) => (
@@ -275,13 +288,13 @@ export default function OpenAPIImportDialog({ open, onClose, onImport, projectId
                     {server}
                   </MenuItem>
                 ))}
-                <MenuItem value="">
+                <MenuItem value="custom">
                   <em>Custom (use environment variable)</em>
                 </MenuItem>
               </Select>
             </FormControl>
 
-            {baseUrlOverride === '' && (
+            {useCustomBaseUrl && (
               <TextField
                 fullWidth
                 label="Custom Base URL"
