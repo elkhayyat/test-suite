@@ -1,5 +1,5 @@
 import { MongoClient, Db, Collection } from 'mongodb';
-import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, User, Organization, Team, TeamUser, ProjectTeam } from '../../../shared/src/types';
+import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, User, Organization, Team, TeamUser, ProjectTeam, ProjectOpenAPISchema } from '../../../shared/src/types';
 
 export interface DbCollections {
   flows: Collection<TestFlow>;
@@ -14,6 +14,7 @@ export interface DbCollections {
   teams: Collection<Team>;
   teamUsers: Collection<TeamUser>;
   projectTeams: Collection<ProjectTeam>;
+  projectOpenAPISchemas: Collection<ProjectOpenAPISchema>;
 }
 
 export class MongoDB {
@@ -45,6 +46,7 @@ export class MongoDB {
       teams: this.db.collection<Team>('teams'),
       teamUsers: this.db.collection<TeamUser>('teamUsers'),
       projectTeams: this.db.collection<ProjectTeam>('projectTeams'),
+      projectOpenAPISchemas: this.db.collection<ProjectOpenAPISchema>('projectOpenAPISchemas'),
     };
   }
 

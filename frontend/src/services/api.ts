@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, Organization, Team, TeamUser, TeamUserWithDetails, ProjectTeam } from '../../../shared/src/types';
+import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, Organization, Team, TeamUser, TeamUserWithDetails, ProjectTeam, ProjectOpenAPISchema } from '../../../shared/src/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -178,6 +178,41 @@ export const api = {
 
   async importProject(projectId: string, data: any): Promise<any> {
     const response = await apiClient.post(`/projects/${projectId}/import`, data);
+    return response.data;
+  },
+
+  // Project OpenAPI Schemas
+  async getProjectOpenAPISchemas(projectId: string): Promise<ProjectOpenAPISchema[]> {
+    const response = await apiClient.get(`/projects/${projectId}/openapi-schemas`);
+    return response.data;
+  },
+
+  async createProjectOpenAPISchema(projectId: string, schema: Partial<ProjectOpenAPISchema>): Promise<ProjectOpenAPISchema> {
+    const response = await apiClient.post(`/projects/${projectId}/openapi-schemas`, schema);
+    return response.data;
+  },
+
+  async updateProjectOpenAPISchema(projectId: string, schemaId: string, schema: Partial<ProjectOpenAPISchema>): Promise<ProjectOpenAPISchema> {
+    const response = await apiClient.put(`/projects/${projectId}/openapi-schemas/${schemaId}`, schema);
+    return response.data;
+  },
+
+  async deleteProjectOpenAPISchema(projectId: string, schemaId: string): Promise<void> {
+    await apiClient.delete(`/projects/${projectId}/openapi-schemas/${schemaId}`);
+  },
+
+  async generateFlowsFromOpenAPISchema(
+    projectId: string,
+    schemaId: string,
+    selectedOperations: string[],
+    baseUrlOverride?: string,
+    folderId?: string
+  ): Promise<TestFlow[]> {
+    const response = await apiClient.post(`/projects/${projectId}/openapi-schemas/${schemaId}/generate-flows`, {
+      selectedOperations,
+      baseUrlOverride,
+      folderId
+    });
     return response.data;
   },
 

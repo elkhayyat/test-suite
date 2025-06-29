@@ -25,7 +25,7 @@ import {
 } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LinkIcon from '@mui/icons-material/Link';
-import { parseOpenAPISchema, generateStepsFromOpenAPI, ParsedOpenAPI } from '../utils/openApiParser';
+import { parseOpenAPISchema, generateStepsFromOpenAPI, ParsedOpenAPI } from '../../../shared/src/openApiParser';
 import { TestStep } from '../../../shared/src/types';
 
 interface OpenAPIImportDialogProps {

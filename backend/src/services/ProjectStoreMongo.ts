@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Project, Folder, FolderTree } from '../../../shared/src/types';
+import { Project, Folder, FolderTree, ProjectOpenAPISchema, TestFlow, TestStep } from '../../../shared/src/types';
 import { MongoDB } from '../db/mongodb';
+import { parseOpenAPISchema, generateStepsFromOpenAPI } from '../../../shared/src/openApiParser';
 
 export class ProjectStore {
   private mongodb: MongoDB;
@@ -222,6 +223,132 @@ export class ProjectStore {
     } catch (error) {
       console.error('Failed to get projects by organization:', error);
       return [];
+    }
+  }
+
+  // OpenAPI Schema management methods
+  async getOpenAPISchemas(projectId: string): Promise<ProjectOpenAPISchema[]> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const schemas = await collections.projectOpenAPISchemas.find({ projectId }).toArray();
+      return schemas;
+    } catch (error) {
+      console.error('Failed to get OpenAPI schemas:', error);
+      return [];
+    }
+  }
+
+  async getOpenAPISchema(schemaId: string): Promise<ProjectOpenAPISchema | undefined> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const schema = await collections.projectOpenAPISchemas.findOne({ id: schemaId });
+      return schema || undefined;
+    } catch (error) {
+      console.error('Failed to get OpenAPI schema:', error);
+      return undefined;
+    }
+  }
+
+  async createOpenAPISchema(data: Partial<ProjectOpenAPISchema>): Promise<ProjectOpenAPISchema> {
+    const schema: ProjectOpenAPISchema = {
+      id: data.id || uuidv4(),
+      projectId: data.projectId!,
+      name: data.name!,
+      description: data.description,
+      version: data.version!,
+      title: data.title!,
+      baseUrl: data.baseUrl,
+      schema: data.schema!,
+      createdAt: data.createdAt || new Date(),
+      updatedAt: data.updatedAt || new Date(),
+    };
+
+    try {
+      const collections = this.mongodb.getCollections();
+      await collections.projectOpenAPISchemas.insertOne(schema);
+      return schema;
+    } catch (error) {
+      console.error('Failed to create OpenAPI schema:', error);
+      throw error;
+    }
+  }
+
+  async updateOpenAPISchema(schemaId: string, data: Partial<ProjectOpenAPISchema>): Promise<ProjectOpenAPISchema | undefined> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const result = await collections.projectOpenAPISchemas.updateOne(
+        { id: schemaId },
+        { $set: { ...data, updatedAt: new Date() } }
+      );
+
+      if (result.matchedCount === 0) {
+        return undefined;
+      }
+
+      return await this.getOpenAPISchema(schemaId);
+    } catch (error) {
+      console.error('Failed to update OpenAPI schema:', error);
+      throw error;
+    }
+  }
+
+  async deleteOpenAPISchema(schemaId: string): Promise<boolean> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const result = await collections.projectOpenAPISchemas.deleteOne({ id: schemaId });
+      return result.deletedCount > 0;
+    } catch (error) {
+      console.error('Failed to delete OpenAPI schema:', error);
+      return false;
+    }
+  }
+
+  async generateFlowsFromOpenAPISchema(
+    schemaId: string,
+    selectedOperations: string[],
+    baseUrlOverride?: string,
+    folderId?: string
+  ): Promise<TestFlow[]> {
+    try {
+      const schema = await this.getOpenAPISchema(schemaId);
+      if (!schema) {
+        throw new Error('OpenAPI schema not found');
+      }
+
+      const parsedAPI = parseOpenAPISchema(schema.schema);
+      const steps = generateStepsFromOpenAPI(parsedAPI, selectedOperations, baseUrlOverride);
+      
+      // Create flows for each operation
+      const flows: TestFlow[] = [];
+      const collections = this.mongodb.getCollections();
+      
+      for (const operation of selectedOperations) {
+        const operationSteps = steps.filter(step => 
+          step.name.includes(operation) || step.config?.url?.includes(operation.split(' ')[1])
+        );
+        
+        if (operationSteps.length > 0) {
+          const flow: TestFlow = {
+            id: uuidv4(),
+            projectId: schema.projectId,
+            folderId,
+            name: `${parsedAPI.title} - ${operation}`,
+            description: `Generated from OpenAPI schema: ${schema.name}`,
+            steps: operationSteps,
+            connections: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          
+          await collections.flows.insertOne(flow);
+          flows.push(flow);
+        }
+      }
+      
+      return flows;
+    } catch (error) {
+      console.error('Failed to generate flows from OpenAPI schema:', error);
+      throw error;
     }
   }
 }
