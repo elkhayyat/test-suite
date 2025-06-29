@@ -302,19 +302,7 @@ export default function FlowEditor() {
   };
 
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Ctrl+S or Cmd+S to save
-      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-        event.preventDefault();
-        handleSave();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nodes, edges, flowName, flowDescription]); // Dependencies for handleSave
+  // Note: Keyboard shortcuts are now handled by the useKeyboardShortcuts hook below
 
   // Memoized socket event handlers to prevent recreation
   const socketHandlers = useMemo(() => ({
@@ -519,7 +507,7 @@ export default function FlowEditor() {
         uiActions.setSelectionMode(false);
       }
     }
-  }, [selectionMode, toggleItemById, uiActions.setSelectionMode, hasSelection, selectNone]);
+  }, [selectionMode, toggleItemById, uiActions, hasSelection, selectNone]);
 
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault();
@@ -1082,121 +1070,138 @@ export default function FlowEditor() {
   }, [selectionMode, selectNone, uiActions]);
 
   // Define keyboard shortcuts for the FlowEditor with optimized memoization
-  const fileShortcuts = useMemo(() => [
-    {
-      ...commonShortcuts.save,
-      action: () => handleSave(),
-      description: 'Save flow',
-    },
-    {
-      ...commonShortcuts.new,
-      action: () => navigate('/flows/new'),
-      description: 'Create new flow',
-    },
-  ], [handleSave, navigate]);
-
-  const flowShortcuts = useMemo(() => [
-    {
-      key: 'r',
-      ctrlKey: true,
-      metaKey: true,
-      action: () => {
-        if (id && id !== 'new') {
-          handleRunFlow();
-        }
+  const fileShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 's',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => handleSave(),
+        description: 'Save flow',
       },
-      description: 'Run flow',
-      enabled: id !== 'new',
-    },
-  ], [handleRunFlow, id]);
-
-  const stepShortcuts = useMemo(() => [
-    {
-      ...commonShortcuts.copy,
-      action: () => {
-        if (hasSelection) {
-          // Multi-selection copy
-          handleBulkCopy();
-        } else if (selectedNode) {
-          // Single selection copy
-          updateClipboard(selectedNode.data as TestStep);
-          setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
-        }
+      {
+        key: 'n',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => navigate('/flows/new'),
+        description: 'Create new flow',
       },
-      description: 'Copy selected step(s)',
-      enabled: !!selectedNode || hasSelection,
-    },
-    {
-      ...commonShortcuts.paste,
-      action: () => {
-        if (clipboard) {
-          try {
-            if (Array.isArray(clipboard)) {
-              // Paste multiple items
-              const basePosition = calculateOffsetPosition(selectedNode?.position);
-              const newNodes: Node[] = clipboard.map((step, index) => ({
-                id: `${Date.now()}-${index}`,
-                type: 'testStep',
-                position: {
-                  x: basePosition.x + (index * 20),
-                  y: basePosition.y + (index * 120)
-                },
-                data: {
-                  ...step,
-                  id: `${Date.now()}-${index}`,
-                  name: `${step.name} (Copy)`,
-                },
-              }));
-              
-              // Add all nodes
-              newNodes.forEach(node => undoableAddNode(node));
-              setSnackbar({ 
-                open: true, 
-                message: `Pasted ${clipboard.length} step${clipboard.length === 1 ? '' : 's'}`, 
-                severity: 'success' 
-              });
-            } else {
-              // Paste single item
-              const newNode: Node = {
-                id: `${Date.now()}`,
-                type: 'testStep',
-                position: calculateOffsetPosition(selectedNode?.position),
-                data: {
-                  ...clipboard,
-                  id: `${Date.now()}`,
-                  name: `${clipboard.name} (Copy)`,
-                },
-              };
-              undoableAddNode(newNode);
-              setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
-            }
-            debouncedSetSaveStatus('unsaved');
-          } catch (error) {
-            console.error('Failed to paste:', error);
-            setSnackbar({
-              open: true,
-              message: `Failed to paste: ${error instanceof Error ? error.message : 'Unknown error'}`,
-              severity: 'error'
-            });
+    ];
+  }, [handleSave, navigate]);
+
+  const flowShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 'r',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (id && id !== 'new') {
+            handleRunFlow();
           }
-        }
+        },
+        description: 'Run flow',
+        enabled: id !== 'new',
       },
-      description: 'Paste step(s)',
-      enabled: !!clipboard,
-    },
-    {
-      ...commonShortcuts.delete,
-      action: () => {
-        if (selectedNode) {
-          undoableDeleteNode(selectedNode.id);
-          uiActions.setSelectedNode(null);
-          debouncedSetSaveStatus('unsaved');
-        }
+    ];
+  }, [handleRunFlow, id]);
+
+  const stepShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 'c',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (hasSelection) {
+            // Multi-selection copy
+            handleBulkCopy();
+          } else if (selectedNode) {
+            // Single selection copy
+            updateClipboard(selectedNode.data as TestStep);
+            setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
+          }
+        },
+        description: 'Copy selected step(s)',
+        enabled: !!selectedNode || hasSelection,
       },
-      description: 'Delete selected step',
-      enabled: !!selectedNode,
-    },
-  ], [selectedNode, clipboard, updateClipboard, undoableAddNode, undoableDeleteNode, debouncedSetSaveStatus]);
+      {
+        key: 'v',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (clipboard) {
+            try {
+              if (Array.isArray(clipboard)) {
+                // Paste multiple items
+                const basePosition = calculateOffsetPosition(selectedNode?.position);
+                const newNodes: Node[] = clipboard.map((step, index) => ({
+                  id: `${Date.now()}-${index}`,
+                  type: 'testStep',
+                  position: {
+                    x: basePosition.x + (index * 20),
+                    y: basePosition.y + (index * 120)
+                  },
+                  data: {
+                    ...step,
+                    id: `${Date.now()}-${index}`,
+                    name: `${step.name} (Copy)`,
+                  },
+                }));
+                
+                // Add all nodes
+                newNodes.forEach(node => undoableAddNode(node));
+                setSnackbar({ 
+                  open: true, 
+                  message: `Pasted ${clipboard.length} step${clipboard.length === 1 ? '' : 's'}`, 
+                  severity: 'success' 
+                });
+              } else {
+                // Paste single item
+                const newNode: Node = {
+                  id: `${Date.now()}`,
+                  type: 'testStep',
+                  position: calculateOffsetPosition(selectedNode?.position),
+                  data: {
+                    ...clipboard,
+                    id: `${Date.now()}`,
+                    name: `${clipboard.name} (Copy)`,
+                  },
+                };
+                undoableAddNode(newNode);
+                setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+              }
+              debouncedSetSaveStatus('unsaved');
+            } catch (error) {
+              console.error('Failed to paste:', error);
+              setSnackbar({
+                open: true,
+                message: `Failed to paste: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                severity: 'error'
+              });
+            }
+          }
+        },
+        description: 'Paste step(s)',
+        enabled: !!clipboard,
+      },
+      {
+        key: 'Delete',
+        action: () => {
+          if (selectedNode) {
+            undoableDeleteNode(selectedNode.id);
+            uiActions.setSelectedNode(null);
+            debouncedSetSaveStatus('unsaved');
+          }
+        },
+        description: 'Delete selected step',
+        enabled: !!selectedNode,
+      },
+    ];
+  }, [selectedNode, clipboard, updateClipboard, undoableAddNode, undoableDeleteNode, debouncedSetSaveStatus, hasSelection, handleBulkCopy, setSnackbar, uiActions]);
 
   const quickCreateShortcuts = useMemo(() => [
     {
@@ -1231,93 +1236,110 @@ export default function FlowEditor() {
     },
   ], [handleAddStep]);
 
-  const uiShortcuts = useMemo(() => [
-    {
-      key: '`',
-      ctrlKey: true,
-      action: () => uiActions.setConsoleOpen(!consoleOpen),
-      description: 'Toggle console',
-    },
-    {
-      ...commonShortcuts.escape,
-      action: () => {
-        if (hasSelection) {
-          selectNone();
-          uiActions.setSelectionMode(false);
-        } else {
-          uiActions.setSelectedNode(null);
-          uiActions.setContextMenu(null);
-          uiActions.setOpenAPIDialogOpen(false);
-          uiActions.setShortcutsDialogOpen(false);
-        }
+  const uiShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: '`',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => uiActions.setConsoleOpen(!consoleOpen),
+        description: 'Toggle console',
       },
-      description: 'Close dialogs / Clear selection',
-    },
-    {
-      key: '?',
-      action: () => uiActions.setShortcutsDialogOpen(true),
-      description: 'Show keyboard shortcuts',
-    },
-  ], [consoleOpen, hasSelection, selectNone, uiActions]);
+      {
+        key: 'Escape',
+        action: () => {
+          if (hasSelection) {
+            selectNone();
+            uiActions.setSelectionMode(false);
+          } else {
+            uiActions.setSelectedNode(null);
+            uiActions.setContextMenu(null);
+            uiActions.setOpenAPIDialogOpen(false);
+            uiActions.setShortcutsDialogOpen(false);
+          }
+        },
+        description: 'Close dialogs / Clear selection',
+      },
+      {
+        key: '?',
+        action: () => uiActions.setShortcutsDialogOpen(true),
+        description: 'Show keyboard shortcuts',
+      },
+    ];
+  }, [consoleOpen, hasSelection, selectNone, uiActions]);
 
-  const selectionShortcuts = useMemo(() => [
-    {
-      ...commonShortcuts.selectAll,
-      action: () => {
-        if (nodes.length > 0) {
-          selectAll();
-          uiActions.setSelectionMode(true);
-          setSnackbar({ 
-            open: true, 
-            message: `Selected all ${nodes.length} steps`, 
-            severity: 'info' 
-          });
-        }
+  const selectionShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 'a',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (nodes.length > 0) {
+            selectAll();
+            uiActions.setSelectionMode(true);
+            setSnackbar({ 
+              open: true, 
+              message: `Selected all ${nodes.length} steps`, 
+              severity: 'info' 
+            });
+          }
+        },
+        description: 'Select all steps',
+        enabled: nodes.length > 0,
+        preventDefault: true, // Explicitly prevent browser default
       },
-      description: 'Select all steps',
-      enabled: nodes.length > 0,
-      preventDefault: true, // Explicitly prevent browser default
-    },
-    {
-      key: 's',
-      altKey: true,
-      action: handleToggleSelectionMode,
-      description: 'Toggle selection mode',
-    },
-  ], [nodes.length, selectAll, uiActions, handleToggleSelectionMode]);
+      {
+        key: 's',
+        altKey: true,
+        action: handleToggleSelectionMode,
+        description: 'Toggle selection mode',
+      },
+    ];
+  }, [nodes.length, selectAll, uiActions, handleToggleSelectionMode, setSnackbar]);
 
-  const undoRedoShortcuts = useMemo(() => [
-    {
-      ...commonShortcuts.undo,
-      action: () => {
-        if (canUndo) {
-          undo();
-          setSnackbar({ 
-            open: true, 
-            message: `Undid: ${lastUndoAction?.description}`, 
-            severity: 'info' 
-          });
-        }
+  const undoRedoShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 'z',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (canUndo) {
+            undo();
+            setSnackbar({ 
+              open: true, 
+              message: `Undid: ${lastUndoAction?.description}`, 
+              severity: 'info' 
+            });
+          }
+        },
+        description: 'Undo last action',
+        enabled: canUndo,
       },
-      description: 'Undo last action',
-      enabled: canUndo,
-    },
-    {
-      ...commonShortcuts.redo,
-      action: () => {
-        if (canRedo) {
-          redo();
-          setSnackbar({ 
-            open: true, 
-            message: `Redid: ${lastRedoAction?.description}`, 
-            severity: 'info' 
-          });
-        }
+      {
+        key: 'z',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        shiftKey: true,
+        action: () => {
+          if (canRedo) {
+            redo();
+            setSnackbar({ 
+              open: true, 
+              message: `Redid: ${lastRedoAction?.description}`, 
+              severity: 'info' 
+            });
+          }
+        },
+        description: 'Redo last action',
+        enabled: canRedo,
       },
-      description: 'Redo last action',
-      enabled: canRedo,
-    },
-  ], [canUndo, canRedo, undo, redo, lastUndoAction, lastRedoAction]);
+    ];
+  }, [canUndo, canRedo, undo, redo, lastUndoAction, lastRedoAction, setSnackbar]);
 
   // Combine all shortcuts with stable reference
   const keyboardShortcuts = useMemo(() => [
@@ -1527,19 +1549,21 @@ export default function FlowEditor() {
         />
       </ComponentErrorBoundary>
       
-      {/* Bulk Operations Bar */}
-      <BulkOperationsBar
-        selectionCount={selectionCount}
-        onSelectAll={selectAll}
-        onClearSelection={() => {
-          selectNone();
-          uiActions.setSelectionMode(false);
-        }}
-        onBulkDelete={handleBulkDelete}
-        onBulkCopy={handleBulkCopy}
-        isAllSelected={isAllSelected}
-        hasItems={nodes.length > 0}
-      />
+      {/* Bulk Operations Bar - Only show when there's a selection */}
+      {hasSelection && (
+        <BulkOperationsBar
+          selectionCount={selectionCount}
+          onSelectAll={selectAll}
+          onClearSelection={() => {
+            selectNone();
+            uiActions.setSelectionMode(false);
+          }}
+          onBulkDelete={handleBulkDelete}
+          onBulkCopy={handleBulkCopy}
+          isAllSelected={isAllSelected}
+          hasItems={nodes.length > 0}
+        />
+      )}
 
       {/* Loading Overlays */}
       <LoadingOverlay 
