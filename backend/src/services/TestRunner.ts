@@ -5,9 +5,9 @@ import https from 'https';
 import dns from 'dns';
 import { promisify } from 'util';
 import { chromium, Browser, Page } from 'playwright';
-import { TestRun, TestFlow, TestStep, StepResult, SubflowStepConfig } from '../../../shared/src/types';
+import { TestRun, TestFlow, TestStep, StepResult, SubflowStepConfig, IFlowStore, IEnvironmentStore } from '../../../shared/src/types';
 import { FlowStore } from './FlowStore';
-import { EnvironmentStore } from './EnvironmentStoreMongo';
+import { EnvironmentStore } from './EnvironmentStore';
 import { VariableInterpolator } from './VariableInterpolator';
 import { EnhancedInterpolator } from './EnhancedInterpolator';
 import { ConsoleLogger } from './ConsoleLogger';
@@ -17,10 +17,10 @@ export class TestRunner {
   private runs: Map<string, TestRun> = new Map();
   private browser: Browser | null = null;
   private activeRuns: Set<string> = new Set();
-  private environmentStore: EnvironmentStore;
+  private environmentStore: IEnvironmentStore;
   private consoleLogger: ConsoleLogger;
 
-  constructor(private io: Server, private flowStore: FlowStore, environmentStore: EnvironmentStore) {
+  constructor(private io: Server, private flowStore: IFlowStore, environmentStore: IEnvironmentStore) {
     this.environmentStore = environmentStore;
     this.consoleLogger = new ConsoleLogger(io);
   }
@@ -61,7 +61,7 @@ export class TestRunner {
    */
   private isMoreRecentResult(newResult: StepResult, existingResult?: StepResult): boolean {
     return !existingResult || 
-      (newResult.endTime && existingResult.endTime && newResult.endTime > existingResult.endTime);
+      (!!newResult.endTime && !!existingResult.endTime && newResult.endTime > existingResult.endTime);
   }
 
   async startRun(flowId: string, environmentId?: string, selectedSteps?: string[]): Promise<string> {
@@ -72,8 +72,8 @@ export class TestRunner {
 
     // If no environment specified, use the default
     if (!environmentId) {
-      const environments = await this.environmentStore.getEnvironments();
-      const defaultEnv = environments.find(e => e.isDefault);
+      const environments = await this.environmentStore.getAllEnvironments();
+      const defaultEnv = environments.find((e: any) => e.isDefault);
       environmentId = defaultEnv?.id || 'default';
     }
 
@@ -91,7 +91,7 @@ export class TestRunner {
     this.activeRuns.add(run.id);
     this.io.emit('run:started', run);
 
-    this.executeFlow(run.id, flow, environmentId, selectedSteps).catch(error => {
+    this.executeFlow(run.id, flow, environmentId!, selectedSteps).catch(error => {
       console.error('Flow execution error:', error);
       this.updateRunStatus(run.id, 'failed');
     });

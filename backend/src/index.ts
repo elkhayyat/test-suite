@@ -9,6 +9,7 @@ import { environmentRoutes } from './routes/environments';
 import { projectRoutes } from './routes/projects';
 import organizationRoutes from './routes/organizations';
 import { TestRunner } from './services/TestRunner';
+import { EnvironmentStore } from './services/EnvironmentStore';
 
 const app = express();
 const httpServer = createServer(app);
@@ -22,7 +23,8 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
-const testRunner = new TestRunner(io, flowStore);
+const environmentStore = new EnvironmentStore();
+const testRunner = new TestRunner(io, flowStore, environmentStore);
 
 app.use('/api/flows', flowRoutes);
 app.use('/api/runs', runRoutes(testRunner));

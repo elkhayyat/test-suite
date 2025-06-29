@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Environment, EnvironmentVariable } from '../../../shared/src/types';
+import { Environment, EnvironmentVariable, IEnvironmentStore } from '../../../shared/src/types';
 import { getDatabase } from '../db/database';
 
-export class EnvironmentStore {
-  async getEnvironments(): Promise<Environment[]> {
+export class EnvironmentStore implements IEnvironmentStore {
+  async getAllEnvironments(): Promise<Environment[]> {
     const db = await getDatabase();
     const rows = await db.all('SELECT * FROM environments ORDER BY name');
     return rows.map(row => ({

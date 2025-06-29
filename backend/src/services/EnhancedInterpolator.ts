@@ -124,7 +124,8 @@ export class EnhancedInterpolator {
                typeof value === 'object' ? JSON.stringify(value) : String(value);
       } catch (error) {
         console.error(`Error navigating path ${path} in step ${stepId}:`, error);
-        throw new Error(`Cannot access path ${path} in step ${stepId}: ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Cannot access path ${path} in step ${stepId}: ${message}`);
       }
     });
   }

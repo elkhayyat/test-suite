@@ -160,8 +160,34 @@ export interface Folder {
   projectId: string;
   parentId?: string;
   name: string;
+  description?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface FolderTree extends Folder {
+  children: FolderTree[];
+}
+
+export interface IFlowStore {
+  flows: Map<string, TestFlow>;
+  loadFlowsFromDatabase(): Promise<void>;
+  getAllFlows(): TestFlow[] | Promise<TestFlow[]>;
+  getFlow(id: string): TestFlow | undefined | Promise<TestFlow | undefined>;
+  createFlow(data: Partial<TestFlow>): Promise<TestFlow>;
+  updateFlow(id: string, data: Partial<TestFlow>): Promise<TestFlow | null | undefined>;
+  deleteFlow(id: string): Promise<boolean>;
+  getFlowsByProject(projectId: string): TestFlow[] | Promise<TestFlow[]>;
+  getFlowsByFolder(folderId: string): TestFlow[] | Promise<TestFlow[]>;
+}
+
+export interface IEnvironmentStore {
+  getAllEnvironments(): Promise<Environment[]>;
+  getEnvironment(id: string): Promise<Environment | undefined | null>;
+  createEnvironment(data: Partial<Environment>): Promise<Environment>;
+  updateEnvironment(id: string, data: Partial<Environment>): Promise<Environment | null | undefined>;
+  deleteEnvironment(id: string): Promise<boolean>;
+  getEnvironmentVariables(environmentId?: string): Promise<EnvironmentVariable[]>;
 }
 
 export interface User {
