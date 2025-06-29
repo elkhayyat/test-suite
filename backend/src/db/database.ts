@@ -108,6 +108,21 @@ async function initializeDatabase() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE(project_id, user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS project_openapi_schemas (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      version TEXT NOT NULL,
+      title TEXT NOT NULL,
+      base_url TEXT,
+      schema TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      UNIQUE(project_id, name)
+    );
   `);
   
   // Create default environment if none exists

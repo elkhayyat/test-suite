@@ -168,6 +168,20 @@ export interface Project {
   organizationId: string;
   name: string;
   description?: string;
+  openApiSchemas?: ProjectOpenAPISchema[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ProjectOpenAPISchema {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string;
+  version: string;
+  title: string;
+  baseUrl?: string;
+  schema: any; // The actual OpenAPI schema object
   createdAt: Date;
   updatedAt: Date;
 }
