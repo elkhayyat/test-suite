@@ -29,7 +29,7 @@ export class TestRunner {
   }
 
   getAllRuns(): TestRun[] {
-    return Array.from(this.runs.values());
+    return Array.from(this.runs.values()).sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
   }
 
   getRun(id: string): TestRun | undefined {
