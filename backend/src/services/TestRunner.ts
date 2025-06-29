@@ -32,8 +32,36 @@ export class TestRunner {
     return Array.from(this.runs.values()).sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
   }
 
+  async getAllRunsFromDB(organizationId?: string): Promise<TestRun[]> {
+    if (this.runStore && organizationId) {
+      try {
+        // Get runs from database, which already includes sorting by startTime
+        return await this.runStore.getRunsByOrganization(organizationId);
+      } catch (error) {
+        console.error('Failed to fetch runs from database, falling back to memory:', error);
+      }
+    }
+    
+    // Fallback to in-memory runs if no runStore or error
+    return this.getAllRuns();
+  }
+
   getRun(id: string): TestRun | undefined {
     return this.runs.get(id);
+  }
+
+  async getRunFromDB(id: string): Promise<TestRun | null> {
+    if (this.runStore) {
+      try {
+        const run = await this.runStore.getRun(id);
+        if (run) return run;
+      } catch (error) {
+        console.error('Failed to fetch run from database, falling back to memory:', error);
+      }
+    }
+    
+    // Fallback to in-memory run
+    return this.getRun(id) || null;
   }
 
   /**
@@ -95,33 +123,42 @@ export class TestRunner {
     };
 
     this.runs.set(run.id, run);
+    
+    // Save to database if runStore is available
+    if (this.runStore) {
+      try {
+        await this.runStore.saveRun(run);
+      } catch (error) {
+        console.error('Failed to save test run to database:', error);
+      }
+    }
     this.activeRuns.add(run.id);
     this.io.emit('run:started', run);
 
-    this.executeFlow(run.id, flow, environmentId!, selectedSteps).catch(error => {
+    this.executeFlow(run.id, flow, environmentId!, selectedSteps).catch(async error => {
       console.error('Flow execution error:', error);
-      this.updateRunStatus(run.id, 'failed');
+      await this.updateRunStatus(run.id, 'failed');
     });
 
     return run.id;
   }
 
-  stopRun(runId: string): boolean {
+  async stopRun(runId: string): Promise<boolean> {
     if (!this.activeRuns.has(runId)) {
       return false;
     }
     
     this.activeRuns.delete(runId);
-    this.updateRunStatus(runId, 'failed');
+    await this.updateRunStatus(runId, 'failed');
     return true;
   }
 
   private async executeFlow(runId: string, flow: TestFlow, environmentId: string, selectedSteps?: string[]) {
     // Set flow execution timeout (default 5 seconds)
     const flowTimeout = 5000;
-    const flowTimeoutId = setTimeout(() => {
+    const flowTimeoutId = setTimeout(async () => {
       console.error(`Flow execution timeout after ${flowTimeout}ms`);
-      this.updateRunStatus(runId, 'failed');
+      await this.updateRunStatus(runId, 'failed');
       this.activeRuns.delete(runId);
     }, flowTimeout);
 
@@ -173,14 +210,14 @@ export class TestRunner {
 
         const result = await this.executeStep(interpolatedStep, page, environmentId, runId);
 
-        this.addStepResult(runId, result);
+        await this.addStepResult(runId, result);
         this.io.emit('step:updated', { runId, stepId: result.stepId, result });
         
         // Add to completed results for future interpolation
         completedResults.push(result);
 
         if (result.status === 'failed') {
-          this.updateRunStatus(runId, 'failed');
+          await this.updateRunStatus(runId, 'failed');
           break;
         }
       }
@@ -189,7 +226,7 @@ export class TestRunner {
         // Check if any step failed
         const run = this.runs.get(runId);
         const hasFailed = run?.results?.some(r => r.status === 'failed');
-        this.updateRunStatus(runId, hasFailed ? 'failed' : 'completed');
+        await this.updateRunStatus(runId, hasFailed ? 'failed' : 'completed');
       }
     } finally {
       if (page) {
@@ -199,7 +236,7 @@ export class TestRunner {
     }
     } catch (error) {
       console.error('Flow execution error:', error);
-      this.updateRunStatus(runId, 'failed');
+      await this.updateRunStatus(runId, 'failed');
     } finally {
       // Clear the flow timeout
       clearTimeout(flowTimeoutId);
@@ -633,14 +670,23 @@ export class TestRunner {
     }
   }
 
-  private addStepResult(runId: string, result: StepResult) {
+  private async addStepResult(runId: string, result: StepResult) {
     const run = this.runs.get(runId);
     if (run) {
       run.results.push(result);
+      
+      // Save to database if runStore is available
+      if (this.runStore) {
+        try {
+          await this.runStore.saveRun(run);
+        } catch (error) {
+          console.error('Failed to save test run to database:', error);
+        }
+      }
     }
   }
 
-  private updateRunStatus(runId: string, status: TestRun['status']) {
+  private async updateRunStatus(runId: string, status: TestRun['status']) {
     const run = this.runs.get(runId);
     if (run) {
       run.status = status;
@@ -648,6 +694,15 @@ export class TestRunner {
         run.endTime = new Date();
       }
       this.io.emit('run:updated', run);
+      
+      // Save to database if runStore is available
+      if (this.runStore) {
+        try {
+          await this.runStore.saveRun(run);
+        } catch (error) {
+          console.error('Failed to save test run to database:', error);
+        }
+      }
     }
   }
 }

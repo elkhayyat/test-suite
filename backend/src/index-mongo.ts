@@ -60,7 +60,7 @@ async function startServer() {
 
   // Protected routes (auth required)
   app.use(`${API_BASE_PATH}/flows`, authMiddleware(authService), flowRoutes(flowStore, projectStore, organizationStore));
-  app.use(`${API_BASE_PATH}/runs`, authMiddleware(authService), runRoutes(testRunner, flowStore, projectStore));
+  app.use(`${API_BASE_PATH}/runs`, authMiddleware(authService), runRoutes(testRunner, flowStore, projectStore, runStore));
   app.use(`${API_BASE_PATH}/environments`, authMiddleware(authService), environmentRoutes(environmentStore));
   app.use(`${API_BASE_PATH}/projects`, authMiddleware(authService), projectRoutes(projectStore, flowStore, organizationStore));
   app.use(`${API_BASE_PATH}/organizations`, authMiddleware(authService), organizationRoutes(organizationStore));

@@ -3,8 +3,9 @@ import { TestRunner } from '../services/TestRunner';
 import { AuthRequest } from '../middleware/auth';
 import { FlowStore } from '../services/FlowStoreMongo';
 import { ProjectStore } from '../services/ProjectStoreMongo';
+import { TestRunStoreMongo } from '../services/TestRunStoreMongo';
 
-export const runRoutes = (testRunner: TestRunner, flowStore?: FlowStore, projectStore?: ProjectStore) => {
+export const runRoutes = (testRunner: TestRunner, flowStore?: FlowStore, projectStore?: ProjectStore, runStore?: TestRunStoreMongo) => {
   const router = Router();
 
   router.get('/', async (req: AuthRequest, res) => {
@@ -12,24 +13,50 @@ export const runRoutes = (testRunner: TestRunner, flowStore?: FlowStore, project
       return res.status(401).json({ error: 'Not authenticated' });
     }
     
-    const allRuns = testRunner.getAllRuns();
-    // Filter runs by organization
-    const orgRuns = allRuns.filter(run => run.organizationId === req.user!.organizationId);
-    res.json(orgRuns);
+    try {
+      let runs;
+      if (runStore) {
+        // Fetch from database if runStore is available
+        runs = await runStore.getRunsByOrganization(req.user.organizationId);
+      } else {
+        // Fallback to in-memory runs
+        const allRuns = testRunner.getAllRuns();
+        runs = allRuns.filter(run => run.organizationId === req.user!.organizationId);
+      }
+      res.json(runs);
+    } catch (error) {
+      console.error('Failed to fetch test runs:', error);
+      res.status(500).json({ error: 'Failed to fetch test runs' });
+    }
   });
 
-  router.get('/:id', (req: AuthRequest, res) => {
-    const run = testRunner.getRun(req.params.id);
-    if (!run) {
-      return res.status(404).json({ error: 'Run not found' });
+  router.get('/:id', async (req: AuthRequest, res) => {
+    try {
+      let run;
+      if (runStore) {
+        // Try database first
+        run = await runStore.getRun(req.params.id);
+      }
+      
+      // If not found in database or no runStore, try in-memory
+      if (!run) {
+        run = testRunner.getRun(req.params.id);
+      }
+      
+      if (!run) {
+        return res.status(404).json({ error: 'Run not found' });
+      }
+      
+      // Check if user has access to this run
+      if (req.user && run.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      res.json(run);
+    } catch (error) {
+      console.error('Failed to fetch test run:', error);
+      res.status(500).json({ error: 'Failed to fetch test run' });
     }
-    
-    // Check if user has access to this run
-    if (req.user && run.organizationId !== req.user.organizationId) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    
-    res.json(run);
   });
 
   router.post('/', async (req: AuthRequest, res) => {
@@ -71,7 +98,7 @@ export const runRoutes = (testRunner: TestRunner, flowStore?: FlowStore, project
     }
   });
 
-  router.post('/:id/stop', (req: AuthRequest, res) => {
+  router.post('/:id/stop', async (req: AuthRequest, res) => {
     const run = testRunner.getRun(req.params.id);
     if (!run) {
       return res.status(404).json({ error: 'Run not found' });
@@ -82,7 +109,7 @@ export const runRoutes = (testRunner: TestRunner, flowStore?: FlowStore, project
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    const success = testRunner.stopRun(req.params.id);
+    const success = await testRunner.stopRun(req.params.id);
     if (!success) {
       return res.status(404).json({ error: 'Run not found or already stopped' });
     }
