@@ -161,7 +161,7 @@ export default function Dashboard() {
                 <Button 
                   size="small" 
                   startIcon={<EditIcon />}
-                  onClick={() => navigate(`/flows/${flow.id}`)}
+                  onClick={() => navigate(`/flows/${flow.id}${flow.projectId ? `?projectId=${flow.projectId}` : ''}`)}
                 >
                   Edit
                 </Button>
