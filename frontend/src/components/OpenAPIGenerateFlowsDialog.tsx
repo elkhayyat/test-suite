@@ -44,6 +44,7 @@ export default function OpenAPIGenerateFlowsDialog({
   const [selectedOperations, setSelectedOperations] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>('');
   const [baseUrlOverride, setBaseUrlOverride] = useState<string>('');
+  const [useCustomBaseUrl, setUseCustomBaseUrl] = useState(false);
   const [servers, setServers] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -54,7 +55,16 @@ export default function OpenAPIGenerateFlowsDialog({
         const parsed = parseOpenAPISchema(schema.schema);
         setOperations(parsed.operations);
         setServers(parsed.servers);
-        setBaseUrlOverride(schema.baseUrl || (parsed.servers.length > 0 ? parsed.servers[0] : ''));
+        if (schema.baseUrl) {
+          setBaseUrlOverride(schema.baseUrl);
+          setUseCustomBaseUrl(!parsed.servers.includes(schema.baseUrl));
+        } else if (parsed.servers.length > 0) {
+          setBaseUrlOverride(parsed.servers[0]);
+          setUseCustomBaseUrl(false);
+        } else {
+          setBaseUrlOverride('');
+          setUseCustomBaseUrl(true);
+        }
         
         // Pre-select all operations
         const allOperations = parsed.operations.map(op => `${op.method} ${op.path}`);
@@ -82,6 +92,15 @@ export default function OpenAPIGenerateFlowsDialog({
 
   const handleDeselectAll = () => {
     setSelectedOperations([]);
+  };
+
+  const handleClose = () => {
+    setSelectedOperations([]);
+    setSelectedFolder('');
+    setBaseUrlOverride('');
+    setUseCustomBaseUrl(false);
+    setError('');
+    onClose(false);
   };
 
   const handleGenerate = async () => {
@@ -121,7 +140,7 @@ export default function OpenAPIGenerateFlowsDialog({
   };
 
   return (
-    <Dialog open={open} onClose={() => onClose(false)} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
         Generate Flows from "{schema?.name}"
       </DialogTitle>
@@ -153,8 +172,16 @@ export default function OpenAPIGenerateFlowsDialog({
           <FormControl fullWidth margin="normal">
             <InputLabel>Base URL</InputLabel>
             <Select
-              value={baseUrlOverride}
-              onChange={(e) => setBaseUrlOverride(e.target.value)}
+              value={useCustomBaseUrl ? 'custom' : baseUrlOverride}
+              onChange={(e) => {
+                if (e.target.value === 'custom') {
+                  setUseCustomBaseUrl(true);
+                  setBaseUrlOverride('');
+                } else {
+                  setUseCustomBaseUrl(false);
+                  setBaseUrlOverride(e.target.value);
+                }
+              }}
               label="Base URL"
             >
               {servers.map((server, index) => (
@@ -162,13 +189,13 @@ export default function OpenAPIGenerateFlowsDialog({
                   {server}
                 </MenuItem>
               ))}
-              <MenuItem value="">
+              <MenuItem value="custom">
                 <em>Custom</em>
               </MenuItem>
             </Select>
           </FormControl>
 
-          {baseUrlOverride === '' && (
+          {useCustomBaseUrl && (
             <TextField
               fullWidth
               label="Custom Base URL"
@@ -248,7 +275,7 @@ export default function OpenAPIGenerateFlowsDialog({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={() => onClose(false)} disabled={loading}>
+        <Button onClick={handleClose} disabled={loading}>
           Cancel
         </Button>
         <Button
