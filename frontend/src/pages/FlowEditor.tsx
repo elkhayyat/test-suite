@@ -87,17 +87,55 @@ export default function FlowEditor() {
   } = flowUndoRedo;
 
   // Use ReactFlow's native state management for smooth dragging
-  const [nodes, setNodes, onNodesChange] = useNodesState(undoNodes);
+  const [nodes, setNodes, onNodesChangeNative] = useNodesState(undoNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(undoEdges);
+  
+  // Custom nodes change handler that syncs position changes to undo system
+  const onNodesChange = useCallback((changes: any[]) => {
+    // Apply changes to ReactFlow state
+    onNodesChangeNative(changes);
+    
+    // For position changes during dragging, don't sync to undo system immediately
+    // We'll sync on drag end via handleNodeDragStop
+  }, [onNodesChangeNative]);
 
-  // Sync undo/redo state to ReactFlow state
+  // Sync undo/redo state to ReactFlow state only when explicitly undoing/redoing
+  // Don't sync on every change to avoid conflicts with drag operations
+  const lastUndoActionRef = useRef(lastUndoAction);
+  const lastRedoActionRef = useRef(lastRedoAction);
+  const hasInitialSyncRef = useRef(false);
+  
+  // Initial sync when component mounts or when flow is reset
   useEffect(() => {
-    setNodes(undoNodes);
-  }, [undoNodes, setNodes]);
-
+    if (!hasInitialSyncRef.current) {
+      setNodes(undoNodes);
+      setEdges(undoEdges);
+      hasInitialSyncRef.current = true;
+    }
+  }, [undoNodes, undoEdges, setNodes, setEdges]);
+  
+  // Reset sync flag when flow is reset (nodes/edges completely change)
   useEffect(() => {
-    setEdges(undoEdges);
-  }, [undoEdges, setEdges]);
+    hasInitialSyncRef.current = false;
+  }, [id]); // Reset when flow ID changes
+  
+  useEffect(() => {
+    // Only sync when undo/redo actually happened
+    if (lastUndoAction && lastUndoAction !== lastUndoActionRef.current) {
+      setNodes(undoNodes);
+      setEdges(undoEdges);
+      lastUndoActionRef.current = lastUndoAction;
+    }
+  }, [lastUndoAction, undoNodes, undoEdges, setNodes, setEdges]);
+  
+  useEffect(() => {
+    // Only sync when undo/redo actually happened
+    if (lastRedoAction && lastRedoAction !== lastRedoActionRef.current) {
+      setNodes(undoNodes);
+      setEdges(undoEdges);
+      lastRedoActionRef.current = lastRedoAction;
+    }
+  }, [lastRedoAction, undoNodes, undoEdges, setNodes, setEdges]);
 
   // Flow-specific performance monitoring
   useFlowPerformanceMonitoring(nodes.length, edges.length);
@@ -1412,8 +1450,12 @@ export default function FlowEditor() {
   // Custom handler for node drag end to sync with undo/redo system
   const handleNodeDragStop = useCallback((_event: React.MouseEvent, node: Node) => {
     // Update undo/redo system when drag ends
+    // The node already has the new position from ReactFlow, so we just need to sync it
     undoableMoveNode(node.id, node.position);
-  }, [undoableMoveNode]);
+    
+    // Mark as unsaved since the flow has been modified
+    debouncedSetSaveStatus('unsaved');
+  }, [undoableMoveNode, debouncedSetSaveStatus]);
 
 
   return (
