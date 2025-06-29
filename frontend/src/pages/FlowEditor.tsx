@@ -18,7 +18,7 @@ import ContextMenu from '../components/ContextMenu';
 import { ConsoleCommandExecutor } from '../services/ConsoleCommandExecutor';
 import OpenAPIImportDialog from '../components/OpenAPIImportDialog';
 import useDebounce from '../hooks/useDebounce';
-import useKeyboardShortcuts, { KeyboardShortcutGroup, commonShortcuts } from '../hooks/useKeyboardShortcuts';
+import useKeyboardShortcuts, { KeyboardShortcutGroup } from '../hooks/useKeyboardShortcuts';
 import KeyboardShortcutsDialog from '../components/KeyboardShortcutsDialog';
 import useFlowUndoRedo from '../hooks/useFlowUndoRedo';
 import useMultiSelection from '../hooks/useMultiSelection';
@@ -87,17 +87,39 @@ export default function FlowEditor() {
   } = flowUndoRedo;
 
   // Use ReactFlow's native state management for smooth dragging
-  const [nodes, setNodes, onNodesChange] = useNodesState(undoNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(undoEdges);
+  // Initialize with empty state since we'll load content separately
+  const [nodes, setNodes, onNodesChangeNative] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  
+  // Custom nodes change handler that syncs position changes to undo system
+  const onNodesChange = useCallback((changes: any[]) => {
+    // Apply changes to ReactFlow state
+    onNodesChangeNative(changes);
+    
+    // For position changes during dragging, don't sync to undo system immediately
+    // We'll sync on drag end via handleNodeDragStop
+  }, [onNodesChangeNative]);
 
-  // Sync undo/redo state to ReactFlow state
+  // Track undo/redo actions to sync state only when they happen
+  const lastUndoActionRef = useRef(lastUndoAction);
+  const lastRedoActionRef = useRef(lastRedoAction);
+  
+  // Only sync FROM undo system when explicit undo/redo happens
   useEffect(() => {
-    setNodes(undoNodes);
-  }, [undoNodes, setNodes]);
-
+    if (lastUndoAction && lastUndoAction !== lastUndoActionRef.current) {
+      setNodes(undoNodes);
+      setEdges(undoEdges);
+      lastUndoActionRef.current = lastUndoAction;
+    }
+  }, [lastUndoAction, undoNodes, undoEdges, setNodes, setEdges]);
+  
   useEffect(() => {
-    setEdges(undoEdges);
-  }, [undoEdges, setEdges]);
+    if (lastRedoAction && lastRedoAction !== lastRedoActionRef.current) {
+      setNodes(undoNodes);
+      setEdges(undoEdges);
+      lastRedoActionRef.current = lastRedoAction;
+    }
+  }, [lastRedoAction, undoNodes, undoEdges, setNodes, setEdges]);
 
   // Flow-specific performance monitoring
   useFlowPerformanceMonitoring(nodes.length, edges.length);
@@ -141,16 +163,21 @@ export default function FlowEditor() {
   } = testExecutionState;
 
   // Clipboard state (keeping separate as it's simple and has special localStorage logic)
-  const [clipboard, setClipboard] = useState<TestStep | null>(() => {
+  const [clipboard, setClipboard] = useState<TestStep[] | TestStep | null>(() => {
     const saved = localStorage.getItem('stepClipboard');
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Handle legacy single-item format
+      return Array.isArray(parsed) ? parsed : [parsed];
+    }
+    return null;
   });
 
   // Helper function to update clipboard and localStorage
-  const updateClipboard = (step: TestStep | null) => {
-    setClipboard(step);
-    if (step) {
-      localStorage.setItem('stepClipboard', JSON.stringify(step));
+  const updateClipboard = (steps: TestStep[] | TestStep | null) => {
+    setClipboard(steps);
+    if (steps) {
+      localStorage.setItem('stepClipboard', JSON.stringify(steps));
     } else {
       localStorage.removeItem('stepClipboard');
     }
@@ -233,11 +260,19 @@ export default function FlowEditor() {
     // Check if we're on the new flow path (either by id="new" or pathname="/flows/new")
     const isNewFlow = id === 'new' || location.pathname === '/flows/new';
     
+    // Clear multi-selection when navigating to any flow
+    selectNone();
+    uiActions.setSelectionMode(false);
+    
     if (id && id !== 'new' && !isNewFlow) {
       loadFlow(id);
     } else if (isNewFlow) {
       // Reset state for new flow creation
       flowEditActions.resetFlow('New Flow', '');
+      // Set ReactFlow state directly first
+      setNodes([]);
+      setEdges([]);
+      // Then update undo system
       undoableResetState([], []);
       uiActions.setSelectedNode(null);
       testExecutionActions.clearStepResults();
@@ -249,7 +284,7 @@ export default function FlowEditor() {
         isInitialLoadRef.current = false;
       }, 100);
     }
-  }, [id, searchParams, location.pathname]);
+  }, [id, searchParams, location.pathname, selectNone, uiActions]);
 
   // Handle debounced flow name updates
   useEffect(() => {
@@ -292,19 +327,7 @@ export default function FlowEditor() {
   };
 
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Ctrl+S or Cmd+S to save
-      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-        event.preventDefault();
-        handleSave();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nodes, edges, flowName, flowDescription]); // Dependencies for handleSave
+  // Note: Keyboard shortcuts are now handled by the useKeyboardShortcuts hook below
 
   // Memoized socket event handlers to prevent recreation
   const socketHandlers = useMemo(() => ({
@@ -428,58 +451,6 @@ export default function FlowEditor() {
     // to avoid conflicts with the undo/redo system
   }, [stepResults, currentRun]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      try {
-        // Check if user is typing in an input field
-        if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
-          return;
-        }
-
-        // Copy (Cmd/Ctrl + C)
-        if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedNode) {
-          updateClipboard(selectedNode.data as TestStep);
-          setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
-        }
-
-        // Paste (Cmd/Ctrl + V)
-        if ((e.metaKey || e.ctrlKey) && e.key === 'v' && clipboard) {
-          const newNode: Node = {
-            id: `${Date.now()}`,
-            type: 'testStep',
-            position: calculateOffsetPosition(selectedNode?.position),
-            data: {
-              ...clipboard,
-              id: `${Date.now()}`,
-              name: `${clipboard.name} (Copy)`,
-            },
-          };
-          undoableAddNode(newNode);
-          setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
-          debouncedSetSaveStatus('unsaved');
-        }
-
-        // Delete (Delete or Backspace)
-        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNode) {
-          undoableDeleteNode(selectedNode.id);
-          uiActions.setSelectedNode(null);
-          debouncedSetSaveStatus('unsaved');
-        }
-      } catch (error) {
-        console.error('Keyboard shortcut error:', error);
-        setSnackbar({
-          open: true,
-          message: 'An error occurred with keyboard shortcut',
-          severity: 'error'
-        });
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [selectedNode, clipboard, undoableAddNode, undoableDeleteNode, debouncedSetSaveStatus]);
 
   const loadFlow = async (flowId: string) => {
     try {
@@ -511,7 +482,13 @@ export default function FlowEditor() {
       );
       
       measureSync('resetFlowState', 
-        () => undoableResetState(flowNodes, flowEdges),
+        () => {
+          // Set ReactFlow state directly first
+          setNodes(flowNodes);
+          setEdges(flowEdges);
+          // Then update undo system
+          undoableResetState(flowNodes, flowEdges);
+        },
         { nodeCount: flowNodes.length, edgeCount: flowEdges.length }
       );
       
@@ -561,7 +538,7 @@ export default function FlowEditor() {
         uiActions.setSelectionMode(false);
       }
     }
-  }, [selectionMode, toggleItemById, uiActions.setSelectionMode, hasSelection, selectNone]);
+  }, [selectionMode, toggleItemById, uiActions, hasSelection, selectNone]);
 
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
     event.preventDefault();
@@ -808,6 +785,10 @@ export default function FlowEditor() {
           targetHandle: conn.targetHandle,
         }));
         
+        // Set ReactFlow state directly first
+        setNodes(importedNodes);
+        setEdges(importedEdges);
+        // Then update undo system
         undoableResetState(importedNodes, importedEdges);
         
         setSnackbar({ open: true, message: 'Flow imported successfully', severity: 'success' });
@@ -889,18 +870,44 @@ export default function FlowEditor() {
   const handleContextMenuPaste = useCallback(() => {
     try {
       if (clipboard && contextMenuNode) {
-        const newNode: Node = {
-          id: `${Date.now()}`,
-          type: 'testStep',
-          position: calculateOffsetPosition(contextMenuNode.position),
-          data: {
-            ...clipboard,
+        if (Array.isArray(clipboard)) {
+          // Paste multiple items
+          clipboard.forEach((step, index) => {
+            const newNode: Node = {
+              id: `${Date.now()}-${index}`,
+              type: 'testStep',
+              position: {
+                x: contextMenuNode.position.x + (index * 20),
+                y: contextMenuNode.position.y + (index * 120)
+              },
+              data: {
+                ...step,
+                id: `${Date.now()}-${index}`,
+                name: `${step.name} (Copy)`,
+              },
+            };
+            undoableAddNode(newNode);
+          });
+          setSnackbar({ 
+            open: true, 
+            message: `Pasted ${clipboard.length} step${clipboard.length === 1 ? '' : 's'}`, 
+            severity: 'success' 
+          });
+        } else {
+          // Paste single item
+          const newNode: Node = {
             id: `${Date.now()}`,
-            name: `${clipboard.name} (Copy)`,
-          },
-        };
-        undoableAddNode(newNode);
-        setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+            type: 'testStep',
+            position: calculateOffsetPosition(contextMenuNode.position),
+            data: {
+              ...clipboard,
+              id: `${Date.now()}`,
+              name: `${clipboard.name} (Copy)`,
+            },
+          };
+          undoableAddNode(newNode);
+          setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+        }
         debouncedSetSaveStatus('unsaved');
       }
     } catch (error) {
@@ -911,7 +918,7 @@ export default function FlowEditor() {
         severity: 'error'
       });
     }
-  }, [clipboard, contextMenuNode, undoableAddNode, debouncedSetSaveStatus]);
+  }, [clipboard, contextMenuNode, undoableAddNode, debouncedSetSaveStatus, setSnackbar]);
 
   const handleContextMenuDuplicate = useCallback(() => {
     try {
@@ -1097,14 +1104,13 @@ export default function FlowEditor() {
     if (selectedNodes.length === 0) return;
     
     try {
-      // For now, copy the first selected item to clipboard
-      // In a more advanced implementation, you might want to support copying multiple items
-      const firstNode = selectedNodes[0];
-      updateClipboard(firstNode.data as TestStep);
+      // Copy all selected items to clipboard as an array
+      const selectedSteps = selectedNodes.map(node => node.data as TestStep);
+      updateClipboard(selectedSteps);
       
       setSnackbar({ 
         open: true, 
-        message: `Copied ${selectedNodes.length === 1 ? `"${firstNode.data.name}"` : `${selectedNodes.length} steps (first item to clipboard)`}`, 
+        message: `Copied ${selectedNodes.length} step${selectedNodes.length === 1 ? '' : 's'}`, 
         severity: 'success' 
       });
     } catch (error) {
@@ -1125,81 +1131,138 @@ export default function FlowEditor() {
   }, [selectionMode, selectNone, uiActions]);
 
   // Define keyboard shortcuts for the FlowEditor with optimized memoization
-  const fileShortcuts = useMemo(() => [
-    {
-      ...commonShortcuts.save,
-      action: () => handleSave(),
-      description: 'Save flow',
-    },
-    {
-      ...commonShortcuts.new,
-      action: () => navigate('/flows/new'),
-      description: 'Create new flow',
-    },
-  ], [handleSave, navigate]);
+  const fileShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 's',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => handleSave(),
+        description: 'Save flow',
+      },
+      {
+        key: 'n',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => navigate('/flows/new'),
+        description: 'Create new flow',
+      },
+    ];
+  }, [handleSave, navigate]);
 
-  const flowShortcuts = useMemo(() => [
-    {
-      key: 'r',
-      ctrlKey: true,
-      metaKey: true,
-      action: () => {
-        if (id && id !== 'new') {
-          handleRunFlow();
-        }
+  const flowShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 'r',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (id && id !== 'new') {
+            handleRunFlow();
+          }
+        },
+        description: 'Run flow',
+        enabled: id !== 'new',
       },
-      description: 'Run flow',
-      enabled: id !== 'new',
-    },
-  ], [handleRunFlow, id]);
+    ];
+  }, [handleRunFlow, id]);
 
-  const stepShortcuts = useMemo(() => [
-    {
-      ...commonShortcuts.copy,
-      action: () => {
-        if (selectedNode) {
-          updateClipboard(selectedNode.data as TestStep);
-          setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
-        }
+  const stepShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 'c',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (hasSelection) {
+            // Multi-selection copy
+            handleBulkCopy();
+          } else if (selectedNode) {
+            // Single selection copy
+            updateClipboard(selectedNode.data as TestStep);
+            setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
+          }
+        },
+        description: 'Copy selected step(s)',
+        enabled: !!selectedNode || hasSelection,
       },
-      description: 'Copy selected step',
-      enabled: !!selectedNode,
-    },
-    {
-      ...commonShortcuts.paste,
-      action: () => {
-        if (clipboard) {
-          const newNode: Node = {
-            id: `${Date.now()}`,
-            type: 'testStep',
-            position: calculateOffsetPosition(selectedNode?.position),
-            data: {
-              ...clipboard,
-              id: `${Date.now()}`,
-              name: `${clipboard.name} (Copy)`,
-            },
-          };
-          undoableAddNode(newNode);
-          setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
-          debouncedSetSaveStatus('unsaved');
-        }
+      {
+        key: 'v',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (clipboard) {
+            try {
+              if (Array.isArray(clipboard)) {
+                // Paste multiple items
+                const basePosition = calculateOffsetPosition(selectedNode?.position);
+                const newNodes: Node[] = clipboard.map((step, index) => ({
+                  id: `${Date.now()}-${index}`,
+                  type: 'testStep',
+                  position: {
+                    x: basePosition.x + (index * 20),
+                    y: basePosition.y + (index * 120)
+                  },
+                  data: {
+                    ...step,
+                    id: `${Date.now()}-${index}`,
+                    name: `${step.name} (Copy)`,
+                  },
+                }));
+                
+                // Add all nodes
+                newNodes.forEach(node => undoableAddNode(node));
+                setSnackbar({ 
+                  open: true, 
+                  message: `Pasted ${clipboard.length} step${clipboard.length === 1 ? '' : 's'}`, 
+                  severity: 'success' 
+                });
+              } else {
+                // Paste single item
+                const newNode: Node = {
+                  id: `${Date.now()}`,
+                  type: 'testStep',
+                  position: calculateOffsetPosition(selectedNode?.position),
+                  data: {
+                    ...clipboard,
+                    id: `${Date.now()}`,
+                    name: `${clipboard.name} (Copy)`,
+                  },
+                };
+                undoableAddNode(newNode);
+                setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+              }
+              debouncedSetSaveStatus('unsaved');
+            } catch (error) {
+              console.error('Failed to paste:', error);
+              setSnackbar({
+                open: true,
+                message: `Failed to paste: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                severity: 'error'
+              });
+            }
+          }
+        },
+        description: 'Paste step(s)',
+        enabled: !!clipboard,
       },
-      description: 'Paste step',
-      enabled: !!clipboard,
-    },
-    {
-      ...commonShortcuts.delete,
-      action: () => {
-        if (selectedNode) {
-          undoableDeleteNode(selectedNode.id);
-          uiActions.setSelectedNode(null);
-          debouncedSetSaveStatus('unsaved');
-        }
+      {
+        key: 'Delete',
+        action: () => {
+          if (selectedNode) {
+            undoableDeleteNode(selectedNode.id);
+            uiActions.setSelectedNode(null);
+            debouncedSetSaveStatus('unsaved');
+          }
+        },
+        description: 'Delete selected step',
+        enabled: !!selectedNode,
       },
-      description: 'Delete selected step',
-      enabled: !!selectedNode,
-    },
-  ], [selectedNode, clipboard, updateClipboard, undoableAddNode, undoableDeleteNode, debouncedSetSaveStatus]);
+    ];
+  }, [selectedNode, clipboard, updateClipboard, undoableAddNode, undoableDeleteNode, debouncedSetSaveStatus, hasSelection, handleBulkCopy, setSnackbar, uiActions]);
 
   const quickCreateShortcuts = useMemo(() => [
     {
@@ -1234,92 +1297,110 @@ export default function FlowEditor() {
     },
   ], [handleAddStep]);
 
-  const uiShortcuts = useMemo(() => [
-    {
-      key: '`',
-      ctrlKey: true,
-      action: () => uiActions.setConsoleOpen(!consoleOpen),
-      description: 'Toggle console',
-    },
-    {
-      ...commonShortcuts.escape,
-      action: () => {
-        if (hasSelection) {
-          selectNone();
-          uiActions.setSelectionMode(false);
-        } else {
-          uiActions.setSelectedNode(null);
-          uiActions.setContextMenu(null);
-          uiActions.setOpenAPIDialogOpen(false);
-          uiActions.setShortcutsDialogOpen(false);
-        }
+  const uiShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: '`',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => uiActions.setConsoleOpen(!consoleOpen),
+        description: 'Toggle console',
       },
-      description: 'Close dialogs / Clear selection',
-    },
-    {
-      key: '?',
-      action: () => uiActions.setShortcutsDialogOpen(true),
-      description: 'Show keyboard shortcuts',
-    },
-  ], [consoleOpen, hasSelection, selectNone, uiActions]);
+      {
+        key: 'Escape',
+        action: () => {
+          if (hasSelection) {
+            selectNone();
+            uiActions.setSelectionMode(false);
+          } else {
+            uiActions.setSelectedNode(null);
+            uiActions.setContextMenu(null);
+            uiActions.setOpenAPIDialogOpen(false);
+            uiActions.setShortcutsDialogOpen(false);
+          }
+        },
+        description: 'Close dialogs / Clear selection',
+      },
+      {
+        key: '?',
+        action: () => uiActions.setShortcutsDialogOpen(true),
+        description: 'Show keyboard shortcuts',
+      },
+    ];
+  }, [consoleOpen, hasSelection, selectNone, uiActions]);
 
-  const selectionShortcuts = useMemo(() => [
-    {
-      ...commonShortcuts.selectAll,
-      action: () => {
-        if (nodes.length > 0) {
-          selectAll();
-          uiActions.setSelectionMode(true);
-          setSnackbar({ 
-            open: true, 
-            message: `Selected all ${nodes.length} steps`, 
-            severity: 'info' 
-          });
-        }
+  const selectionShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 'a',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (nodes.length > 0) {
+            selectAll();
+            uiActions.setSelectionMode(true);
+            setSnackbar({ 
+              open: true, 
+              message: `Selected all ${nodes.length} steps`, 
+              severity: 'info' 
+            });
+          }
+        },
+        description: 'Select all steps',
+        enabled: nodes.length > 0,
+        preventDefault: true, // Explicitly prevent browser default
       },
-      description: 'Select all steps',
-      enabled: nodes.length > 0,
-    },
-    {
-      key: 's',
-      altKey: true,
-      action: handleToggleSelectionMode,
-      description: 'Toggle selection mode',
-    },
-  ], [nodes.length, selectAll, uiActions, handleToggleSelectionMode]);
+      {
+        key: 's',
+        altKey: true,
+        action: handleToggleSelectionMode,
+        description: 'Toggle selection mode',
+      },
+    ];
+  }, [nodes.length, selectAll, uiActions, handleToggleSelectionMode, setSnackbar]);
 
-  const undoRedoShortcuts = useMemo(() => [
-    {
-      ...commonShortcuts.undo,
-      action: () => {
-        if (canUndo) {
-          undo();
-          setSnackbar({ 
-            open: true, 
-            message: `Undid: ${lastUndoAction?.description}`, 
-            severity: 'info' 
-          });
-        }
+  const undoRedoShortcuts = useMemo(() => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    return [
+      {
+        key: 'z',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        action: () => {
+          if (canUndo) {
+            undo();
+            setSnackbar({ 
+              open: true, 
+              message: `Undid: ${lastUndoAction?.description}`, 
+              severity: 'info' 
+            });
+          }
+        },
+        description: 'Undo last action',
+        enabled: canUndo,
       },
-      description: 'Undo last action',
-      enabled: canUndo,
-    },
-    {
-      ...commonShortcuts.redo,
-      action: () => {
-        if (canRedo) {
-          redo();
-          setSnackbar({ 
-            open: true, 
-            message: `Redid: ${lastRedoAction?.description}`, 
-            severity: 'info' 
-          });
-        }
+      {
+        key: 'z',
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        shiftKey: true,
+        action: () => {
+          if (canRedo) {
+            redo();
+            setSnackbar({ 
+              open: true, 
+              message: `Redid: ${lastRedoAction?.description}`, 
+              severity: 'info' 
+            });
+          }
+        },
+        description: 'Redo last action',
+        enabled: canRedo,
       },
-      description: 'Redo last action',
-      enabled: canRedo,
-    },
-  ], [canUndo, canRedo, undo, redo, lastUndoAction, lastRedoAction]);
+    ];
+  }, [canUndo, canRedo, undo, redo, lastUndoAction, lastRedoAction, setSnackbar]);
 
   // Combine all shortcuts with stable reference
   const keyboardShortcuts = useMemo(() => [
@@ -1392,8 +1473,12 @@ export default function FlowEditor() {
   // Custom handler for node drag end to sync with undo/redo system
   const handleNodeDragStop = useCallback((_event: React.MouseEvent, node: Node) => {
     // Update undo/redo system when drag ends
+    // The node already has the new position from ReactFlow, so we just need to sync it
     undoableMoveNode(node.id, node.position);
-  }, [undoableMoveNode]);
+    
+    // Mark as unsaved since the flow has been modified
+    debouncedSetSaveStatus('unsaved');
+  }, [undoableMoveNode, debouncedSetSaveStatus]);
 
 
   return (
@@ -1529,19 +1614,21 @@ export default function FlowEditor() {
         />
       </ComponentErrorBoundary>
       
-      {/* Bulk Operations Bar */}
-      <BulkOperationsBar
-        selectionCount={selectionCount}
-        onSelectAll={selectAll}
-        onClearSelection={() => {
-          selectNone();
-          uiActions.setSelectionMode(false);
-        }}
-        onBulkDelete={handleBulkDelete}
-        onBulkCopy={handleBulkCopy}
-        isAllSelected={isAllSelected}
-        hasItems={nodes.length > 0}
-      />
+      {/* Bulk Operations Bar - Only show when there's a selection */}
+      {hasSelection && (
+        <BulkOperationsBar
+          selectionCount={selectionCount}
+          onSelectAll={selectAll}
+          onClearSelection={() => {
+            selectNone();
+            uiActions.setSelectionMode(false);
+          }}
+          onBulkDelete={handleBulkDelete}
+          onBulkCopy={handleBulkCopy}
+          isAllSelected={isAllSelected}
+          hasItems={nodes.length > 0}
+        />
+      )}
 
       {/* Loading Overlays */}
       <LoadingOverlay 
