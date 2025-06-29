@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, Organization, Team, TeamUser, ProjectTeam } from '../../../shared/src/types';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -9,7 +9,8 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
-
+console.log('VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
+console.log('API_BASE_URL:', API_BASE_URL);
 export const api = {
   async getFlows(): Promise<TestFlow[]> {
     const response = await apiClient.get('/flows');

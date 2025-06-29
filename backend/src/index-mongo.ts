@@ -38,15 +38,17 @@ async function startServer() {
 
   const testRunner = new TestRunner(io, flowStore, environmentStore);
 
+  const API_BASE_PATH = process.env.API_BASE_PATH || '/api';
+
   // Setup routes with stores
-  app.use('/api/flows', flowRoutes(flowStore));
-  app.use('/api/runs', runRoutes(testRunner));
-  app.use('/api/environments', environmentRoutes(environmentStore));
-  app.use('/api/projects', projectRoutes(projectStore, flowStore));
-  app.use('/api/organizations', organizationRoutes);
+  app.use(`${API_BASE_PATH}/flows`, flowRoutes(flowStore));
+  app.use(`${API_BASE_PATH}/runs`, runRoutes(testRunner));
+  app.use(`${API_BASE_PATH}/environments`, environmentRoutes(environmentStore));
+  app.use(`${API_BASE_PATH}/projects`, projectRoutes(projectStore, flowStore));
+  app.use(`${API_BASE_PATH}/organizations`, organizationRoutes);
 
   // Proxy endpoint for external API requests (CORS workaround)
-  app.get('/api/proxy', async (req, res) => {
+  app.get(`${API_BASE_PATH}/proxy`, async (req, res) => {
     const { url } = req.query;
     
     if (!url || typeof url !== 'string') {
