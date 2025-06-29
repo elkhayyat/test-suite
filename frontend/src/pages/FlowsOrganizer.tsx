@@ -5,6 +5,8 @@ import {
   Fab,
   ToggleButton,
   ToggleButtonGroup,
+  Alert,
+  Snackbar,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
@@ -27,6 +29,7 @@ export default function FlowsOrganizer() {
   const [runResultsOpen, setRunResultsOpen] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [currentFlowName, setCurrentFlowName] = useState<string>('');
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '' });
 
   useEffect(() => {
     loadData();
@@ -118,6 +121,89 @@ export default function FlowsOrganizer() {
     }
   };
 
+  const handleBulkProjectRun = async (projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    const projectName = project?.name || 'Unknown Project';
+    
+    if (!window.confirm(`Are you sure you want to run all flows in project "${projectName}"?`)) {
+      return;
+    }
+    
+    try {
+      const result = await api.startBulkProjectRun(projectId, selectedEnvironment);
+      
+      const successCount = result.results.filter(r => r.runId).length;
+      const failCount = result.results.filter(r => r.error).length;
+      
+      setSnackbar({
+        open: true,
+        message: `Started ${successCount} flow run(s) in project "${projectName}"${failCount > 0 ? `, ${failCount} failed` : ''}`,
+        severity: failCount > 0 ? 'warning' : 'success'
+      });
+      
+      // If any runs started successfully, show results for the first one
+      const firstSuccess = result.results.find(r => r.runId);
+      if (firstSuccess) {
+        setCurrentRunId(firstSuccess.runId!);
+        setCurrentFlowName(`${projectName} - Bulk Run`);
+        setRunResultsOpen(true);
+      }
+      
+    } catch (error) {
+      console.error('Failed to start bulk project run:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to start bulk run for project "${projectName}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+    }
+  };
+
+  const handleBulkFolderRun = async (folderId: string) => {
+    // Find the folder name across all projects
+    let folderName = 'Unknown Folder';
+    for (const projectId in folders) {
+      const folder = folders[projectId].find(f => f.id === folderId);
+      if (folder) {
+        folderName = folder.name;
+        break;
+      }
+    }
+    
+    if (!window.confirm(`Are you sure you want to run all flows in folder "${folderName}"?`)) {
+      return;
+    }
+    
+    try {
+      const result = await api.startBulkFolderRun(folderId, selectedEnvironment);
+      
+      const successCount = result.results.filter(r => r.runId).length;
+      const failCount = result.results.filter(r => r.error).length;
+      
+      setSnackbar({
+        open: true,
+        message: `Started ${successCount} flow run(s) in folder "${folderName}"${failCount > 0 ? `, ${failCount} failed` : ''}`,
+        severity: failCount > 0 ? 'warning' : 'success'
+      });
+      
+      // If any runs started successfully, show results for the first one
+      const firstSuccess = result.results.find(r => r.runId);
+      if (firstSuccess) {
+        setCurrentRunId(firstSuccess.runId!);
+        setCurrentFlowName(`${folderName} - Bulk Run`);
+        setRunResultsOpen(true);
+      }
+      
+    } catch (error) {
+      console.error('Failed to start bulk folder run:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to start bulk run for folder "${folderName}": ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+    }
+  };
+
   const handleViewModeChange = (_event: React.MouseEvent<HTMLElement>, newMode: 'tree' | 'grid' | null) => {
     if (newMode !== null) {
       setViewMode(newMode);
@@ -172,14 +258,14 @@ export default function FlowsOrganizer() {
         onFlowDuplicate={handleDuplicateFlow}
         onFlowRun={handleRunFlow}
         onFolderCreateFlow={(folderId, projectId) => navigate(`/flows/new?folderId=${folderId}&projectId=${projectId}`)}
-        onFolderRunAllFlows={(folderId) => console.log('Run all flows in folder:', folderId)}
+        onFolderRunAllFlows={handleBulkFolderRun}
         onFolderDuplicate={(folder) => console.log('Duplicate folder:', folder)}
         onFolderDelete={(folderId, folderName, projectId) => console.log('Delete folder:', folderId, folderName, projectId)}
         onFolderImport={(folderId, projectId) => console.log('Import to folder:', folderId, projectId)}
         onFolderExport={(folderId) => console.log('Export folder:', folderId)}
         onProjectCreateFlow={(projectId) => navigate(`/flows/new?projectId=${projectId}`)}
         onProjectCreateFolder={(projectId) => console.log('Create folder in project:', projectId)}
-        onProjectRunAllFlows={(projectId) => console.log('Run all flows in project:', projectId)}
+        onProjectRunAllFlows={handleBulkProjectRun}
         onProjectDuplicate={(project) => console.log('Duplicate project:', project)}
         onProjectDelete={(projectId, projectName) => console.log('Delete project:', projectId, projectName)}
         onProjectImport={(projectId) => console.log('Import to project:', projectId)}
@@ -216,6 +302,21 @@ export default function FlowsOrganizer() {
         runId={currentRunId}
         flowName={currentFlowName}
       />
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setSnackbar({ ...snackbar, open: false })} 
+          severity={snackbar.severity || 'info'}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

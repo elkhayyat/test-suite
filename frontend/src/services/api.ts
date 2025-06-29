@@ -58,6 +58,16 @@ export const api = {
     await apiClient.post(`/runs/${id}/stop`);
   },
 
+  async startBulkProjectRun(projectId: string, environmentId?: string): Promise<{ message: string; results: Array<{ flowId: string; flowName: string; runId?: string; error?: string }> }> {
+    const response = await apiClient.post(`/runs/bulk/project/${projectId}`, { environmentId });
+    return response.data;
+  },
+
+  async startBulkFolderRun(folderId: string, environmentId?: string): Promise<{ message: string; results: Array<{ flowId: string; flowName: string; runId?: string; error?: string }> }> {
+    const response = await apiClient.post(`/runs/bulk/folder/${folderId}`, { environmentId });
+    return response.data;
+  },
+
   async getEnvironments(): Promise<Environment[]> {
     const response = await apiClient.get('/environments');
     return response.data;
