@@ -1,38 +1,22 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import ReactFlow, {
+import {
   Node,
   Edge,
-  Background,
-  Controls,
-  MiniMap,
   Connection as ReactFlowConnection,
   useNodesState,
   useEdgesState,
 } from 'react-flow-renderer';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { Box, Paper, Button, TextField, Snackbar, Alert, CircularProgress, Typography, Switch, FormControlLabel, IconButton, Collapse } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
-import DownloadIcon from '@mui/icons-material/Download';
-import UploadIcon from '@mui/icons-material/Upload';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import CloudDoneIcon from '@mui/icons-material/CloudDone';
-import CloudQueueIcon from '@mui/icons-material/CloudQueue';
-import CloudOffIcon from '@mui/icons-material/CloudOff';
-import TerminalIcon from '@mui/icons-material/Terminal';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import { Box, Snackbar, Alert } from '@mui/material';
 import { TestStep, TestRun, StepResult, ConsoleLog, HttpStepConfig, BrowserStepConfig, DelayStepConfig, AssertionStepConfig, ConditionStepConfig, SqlStepConfig, Connection } from '../../../shared/src/types';
 import { api } from '../services/api';
 import StepPanel from '../components/StepPanel';
-import StepNode from '../components/StepNode';
 import StepConfigPanel from '../components/StepConfigPanel';
 import { useSocket } from '../hooks/useSocket';
 import { useEnvironment } from '../contexts/EnvironmentContext';
 import ContextMenu from '../components/ContextMenu';
-import InteractiveConsole from '../components/InteractiveConsole';
 import { ConsoleCommandExecutor } from '../services/ConsoleCommandExecutor';
 import OpenAPIImportDialog from '../components/OpenAPIImportDialog';
-import ApiIcon from '@mui/icons-material/Api';
 import useDebounce from '../hooks/useDebounce';
 import useKeyboardShortcuts, { KeyboardShortcutGroup, commonShortcuts } from '../hooks/useKeyboardShortcuts';
 import KeyboardShortcutsDialog from '../components/KeyboardShortcutsDialog';
@@ -43,6 +27,9 @@ import { useFlowEditorState } from '../hooks/useFlowEditorState';
 import { useAsyncOperations } from '../hooks/useAsyncOperation';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { ComponentErrorBoundary } from '../components/ErrorBoundary';
+import FlowToolbar from '../components/FlowToolbar';
+import FlowCanvas from '../components/FlowCanvas';
+import FlowConsole from '../components/FlowConsole';
 import { 
   ensurePosition, 
   ensureInitialPosition, 
@@ -59,9 +46,6 @@ import {
   useBulkOperationMonitoring 
 } from '../hooks/useFlowPerformanceMonitoring';
 
-const nodeTypes = {
-  testStep: StepNode,
-};
 
 export default function FlowEditor() {
   const { id } = useParams();
@@ -446,39 +430,48 @@ export default function FlowEditor() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check if user is typing in an input field
-      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
-        return;
-      }
+      try {
+        // Check if user is typing in an input field
+        if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
+          return;
+        }
 
-      // Copy (Cmd/Ctrl + C)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedNode) {
-        updateClipboard(selectedNode.data as TestStep);
-        setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
-      }
+        // Copy (Cmd/Ctrl + C)
+        if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedNode) {
+          updateClipboard(selectedNode.data as TestStep);
+          setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
+        }
 
-      // Paste (Cmd/Ctrl + V)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'v' && clipboard) {
-        const newNode: Node = {
-          id: `${Date.now()}`,
-          type: 'testStep',
-          position: calculateOffsetPosition(selectedNode?.position),
-          data: {
-            ...clipboard,
+        // Paste (Cmd/Ctrl + V)
+        if ((e.metaKey || e.ctrlKey) && e.key === 'v' && clipboard) {
+          const newNode: Node = {
             id: `${Date.now()}`,
-            name: `${clipboard.name} (Copy)`,
-          },
-        };
-        undoableAddNode(newNode);
-        setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
-        debouncedSetSaveStatus('unsaved');
-      }
+            type: 'testStep',
+            position: calculateOffsetPosition(selectedNode?.position),
+            data: {
+              ...clipboard,
+              id: `${Date.now()}`,
+              name: `${clipboard.name} (Copy)`,
+            },
+          };
+          undoableAddNode(newNode);
+          setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+          debouncedSetSaveStatus('unsaved');
+        }
 
-      // Delete (Delete or Backspace)
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNode) {
-        undoableDeleteNode(selectedNode.id);
-        uiActions.setSelectedNode(null);
-        debouncedSetSaveStatus('unsaved');
+        // Delete (Delete or Backspace)
+        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNode) {
+          undoableDeleteNode(selectedNode.id);
+          uiActions.setSelectedNode(null);
+          debouncedSetSaveStatus('unsaved');
+        }
+      } catch (error) {
+        console.error('Keyboard shortcut error:', error);
+        setSnackbar({
+          open: true,
+          message: 'An error occurred with keyboard shortcut',
+          severity: 'error'
+        });
       }
     };
 
@@ -747,33 +740,42 @@ export default function FlowEditor() {
   };
 
   const handleExport = () => {
-    const flow = {
-      name: flowName,
-      description: flowDescription,
-      steps: nodes.map((node) => ({
-        ...node.data,
-        position: ensurePosition(node.position),
-      })),
-      connections: edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle || undefined,
-        targetHandle: edge.targetHandle || undefined,
-      })),
-    };
+    try {
+      const flow = {
+        name: flowName,
+        description: flowDescription,
+        steps: nodes.map((node) => ({
+          ...node.data,
+          position: ensurePosition(node.position),
+        })),
+        connections: edges.map((edge) => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle || undefined,
+          targetHandle: edge.targetHandle || undefined,
+        })),
+      };
 
-    const dataStr = JSON.stringify(flow, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = `${flowName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_flow.json`;
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-    
-    setSnackbar({ open: true, message: 'Flow exported successfully', severity: 'success' });
+      const dataStr = JSON.stringify(flow, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      
+      const exportFileDefaultName = `${flowName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_flow.json`;
+      
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+      
+      setSnackbar({ open: true, message: 'Flow exported successfully', severity: 'success' });
+    } catch (error) {
+      console.error('Failed to export flow:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to export flow: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+    }
   };
 
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -869,53 +871,89 @@ export default function FlowEditor() {
   };
 
   const handleContextMenuCopy = useCallback(() => {
-    if (contextMenuNode) {
-      updateClipboard(contextMenuNode.data as TestStep);
-      setSnackbar({ open: true, message: `Copied "${contextMenuNode.data.name}"`, severity: 'success' });
+    try {
+      if (contextMenuNode) {
+        updateClipboard(contextMenuNode.data as TestStep);
+        setSnackbar({ open: true, message: `Copied "${contextMenuNode.data.name}"`, severity: 'success' });
+      }
+    } catch (error) {
+      console.error('Failed to copy node:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to copy step: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
     }
   }, [contextMenuNode, updateClipboard]);
 
   const handleContextMenuPaste = useCallback(() => {
-    if (clipboard && contextMenuNode) {
-      const newNode: Node = {
-        id: `${Date.now()}`,
-        type: 'testStep',
-        position: calculateOffsetPosition(contextMenuNode.position),
-        data: {
-          ...clipboard,
+    try {
+      if (clipboard && contextMenuNode) {
+        const newNode: Node = {
           id: `${Date.now()}`,
-          name: `${clipboard.name} (Copy)`,
-        },
-      };
-      undoableAddNode(newNode);
-      setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
-      debouncedSetSaveStatus('unsaved');
+          type: 'testStep',
+          position: calculateOffsetPosition(contextMenuNode.position),
+          data: {
+            ...clipboard,
+            id: `${Date.now()}`,
+            name: `${clipboard.name} (Copy)`,
+          },
+        };
+        undoableAddNode(newNode);
+        setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+        debouncedSetSaveStatus('unsaved');
+      }
+    } catch (error) {
+      console.error('Failed to paste node:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to paste step: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
     }
   }, [clipboard, contextMenuNode, undoableAddNode, debouncedSetSaveStatus]);
 
   const handleContextMenuDuplicate = useCallback(() => {
-    if (contextMenuNode) {
-      const newNode: Node = {
-        id: `${Date.now()}`,
-        type: 'testStep',
-        position: calculateOffsetPosition(contextMenuNode.position),
-        data: {
-          ...(contextMenuNode.data as TestStep),
+    try {
+      if (contextMenuNode) {
+        const newNode: Node = {
           id: `${Date.now()}`,
-          name: `${contextMenuNode.data.name} (Copy)`,
-        },
-      };
-      undoableAddNode(newNode);
-      setSnackbar({ open: true, message: `Duplicated "${contextMenuNode.data.name}"`, severity: 'success' });
-      debouncedSetSaveStatus('unsaved');
+          type: 'testStep',
+          position: calculateOffsetPosition(contextMenuNode.position),
+          data: {
+            ...(contextMenuNode.data as TestStep),
+            id: `${Date.now()}`,
+            name: `${contextMenuNode.data.name} (Copy)`,
+          },
+        };
+        undoableAddNode(newNode);
+        setSnackbar({ open: true, message: `Duplicated "${contextMenuNode.data.name}"`, severity: 'success' });
+        debouncedSetSaveStatus('unsaved');
+      }
+    } catch (error) {
+      console.error('Failed to duplicate node:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to duplicate step: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
     }
   }, [contextMenuNode, undoableAddNode, debouncedSetSaveStatus]);
 
   const handleContextMenuDelete = useCallback(() => {
-    if (contextMenuNode) {
-      undoableDeleteNode(contextMenuNode.id);
-      uiActions.setSelectedNode(null);
-      debouncedSetSaveStatus('unsaved');
+    try {
+      if (contextMenuNode) {
+        undoableDeleteNode(contextMenuNode.id);
+        uiActions.setSelectedNode(null);
+        debouncedSetSaveStatus('unsaved');
+      }
+    } catch (error) {
+      console.error('Failed to delete node:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to delete step: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
     }
   }, [contextMenuNode, undoableDeleteNode, debouncedSetSaveStatus, uiActions]);
 
@@ -1030,33 +1068,53 @@ export default function FlowEditor() {
   const handleBulkDelete = useCallback(() => {
     if (selectedNodes.length === 0) return;
     
-    const stepNames = selectedNodes.map(node => node.data.name).join(', ');
-    if (window.confirm(`Are you sure you want to delete ${selectedNodes.length} step(s)?\n\n${stepNames}`)) {
-      undoableDeleteSelectedNodes(selectedNodes.map(node => node.id));
-      selectNone();
-      uiActions.setSelectedNode(null);
-      debouncedSetSaveStatus('unsaved');
-      setSnackbar({ 
-        open: true, 
-        message: `Deleted ${selectedNodes.length} step(s)`, 
-        severity: 'success' 
+    try {
+      const stepNames = selectedNodes.map(node => node.data.name).join(', ');
+      if (window.confirm(`Are you sure you want to delete ${selectedNodes.length} step(s)?\n\n${stepNames}`)) {
+        measureBulkOperation('deleteNodes', selectedNodes.length, () => {
+          undoableDeleteSelectedNodes(selectedNodes.map(node => node.id));
+        });
+        selectNone();
+        uiActions.setSelectedNode(null);
+        debouncedSetSaveStatus('unsaved');
+        setSnackbar({ 
+          open: true, 
+          message: `Deleted ${selectedNodes.length} step(s)`, 
+          severity: 'success' 
+        });
+      }
+    } catch (error) {
+      console.error('Failed to delete nodes:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to delete steps: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
       });
     }
-  }, [selectedNodes, undoableDeleteSelectedNodes, selectNone, uiActions, debouncedSetSaveStatus, setSnackbar]);
+  }, [selectedNodes, undoableDeleteSelectedNodes, selectNone, uiActions, debouncedSetSaveStatus, setSnackbar, measureBulkOperation]);
 
   const handleBulkCopy = useCallback(() => {
     if (selectedNodes.length === 0) return;
     
-    // For now, copy the first selected item to clipboard
-    // In a more advanced implementation, you might want to support copying multiple items
-    const firstNode = selectedNodes[0];
-    updateClipboard(firstNode.data as TestStep);
-    
-    setSnackbar({ 
-      open: true, 
-      message: `Copied ${selectedNodes.length === 1 ? `"${firstNode.data.name}"` : `${selectedNodes.length} steps (first item to clipboard)`}`, 
-      severity: 'success' 
-    });
+    try {
+      // For now, copy the first selected item to clipboard
+      // In a more advanced implementation, you might want to support copying multiple items
+      const firstNode = selectedNodes[0];
+      updateClipboard(firstNode.data as TestStep);
+      
+      setSnackbar({ 
+        open: true, 
+        message: `Copied ${selectedNodes.length === 1 ? `"${firstNode.data.name}"` : `${selectedNodes.length} steps (first item to clipboard)`}`, 
+        severity: 'success' 
+      });
+    } catch (error) {
+      console.error('Failed to copy nodes:', error);
+      setSnackbar({
+        open: true,
+        message: `Failed to copy steps: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+    }
   }, [selectedNodes, updateClipboard, setSnackbar]);
 
   const handleToggleSelectionMode = useCallback(() => {
@@ -1344,141 +1402,30 @@ export default function FlowEditor() {
       display: 'flex', 
       flexDirection: 'column'
     }}>
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <TextField
-            label="Flow Name"
-            value={tempFlowName}
-            onChange={(e) => {
-              flowEditActions.setTempFlowName(e.target.value);
-              debouncedSetSaveStatus('unsaved');
-            }}
-            size="small"
-          />
-          <TextField
-            label="Description"
-            value={tempFlowDescription}
-            onChange={(e) => {
-              flowEditActions.setTempFlowDescription(e.target.value);
-              debouncedSetSaveStatus('unsaved');
-            }}
-            size="small"
-            sx={{ flex: 1 }}
-          />
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={autoSaveEnabled}
-                  onChange={toggleAutoSave}
-                  size="small"
-                />
-              }
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Typography variant="body2">Auto-save</Typography>
-                  {autoSaveEnabled && (
-                    <>
-                      {saveStatus === 'saved' && <CloudDoneIcon sx={{ fontSize: 16, color: 'success.main' }} />}
-                      {saveStatus === 'saving' && <CircularProgress size={14} thickness={2} />}
-                      {saveStatus === 'unsaved' && <CloudQueueIcon sx={{ fontSize: 16, color: 'warning.main' }} />}
-                    </>
-                  )}
-                  {!autoSaveEnabled && <CloudOffIcon sx={{ fontSize: 16, color: 'text.disabled' }} />}
-                </Box>
-              }
-            />
-            {lastSaved && autoSaveEnabled && saveStatus === 'saved' && (
-              <Typography variant="caption" color="text.secondary">
-                {new Date(lastSaved).toLocaleTimeString()}
-              </Typography>
-            )}
-          </Box>
-          <Button
-            variant="contained"
-            className="gradient-success"
-            startIcon={saveFlowOperation.isLoading ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-            onClick={() => handleSave()}
-            disabled={saveFlowOperation.isLoading}
-            sx={{ 
-              color: 'white',
-              boxShadow: '0 4px 20px rgba(132, 250, 176, 0.3)',
-              '&:hover': {
-                transform: 'translateY(-2px)',
-                boxShadow: '0 8px 32px rgba(132, 250, 176, 0.4)',
-              }
-            }}
-          >
-            {saveFlowOperation.isLoading ? 'Saving...' : 'Save'}
-          </Button>
-          <Button
-            variant="contained"
-            className="gradient-info"
-            startIcon={<DownloadIcon />}
-            onClick={handleExport}
-            sx={{ 
-              color: 'white',
-              boxShadow: '0 4px 20px rgba(79, 172, 254, 0.3)',
-              '&:hover': {
-                transform: 'translateY(-2px)',
-                boxShadow: '0 8px 32px rgba(79, 172, 254, 0.4)',
-              }
-            }}
-          >
-            Export
-          </Button>
-          <input
-            type="file"
-            id="import-flow"
-            accept=".json"
-            style={{ display: 'none' }}
-            onChange={handleImport}
-          />
-          <label htmlFor="import-flow">
-            <Button
-              variant="outlined"
-              startIcon={<UploadIcon />}
-              component="span"
-            >
-              Import
-            </Button>
-          </label>
-          <Button
-            variant="outlined"
-            startIcon={<ApiIcon />}
-            onClick={() => uiActions.setOpenAPIDialogOpen(true)}
-            sx={{
-              borderColor: '#9c27b0',
-              color: '#9c27b0',
-              '&:hover': {
-                borderColor: '#7b1fa2',
-                backgroundColor: 'rgba(156, 39, 176, 0.08)',
-              }
-            }}
-          >
-            Import OpenAPI
-          </Button>
-          <Box sx={{ borderLeft: 1, borderColor: 'divider', pl: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-            <Button
-              variant="contained"
-              className="gradient-primary"
-              startIcon={runFlowOperation.isLoading ? <CircularProgress size={16} color="inherit" /> : <PlayArrowIcon />}
-              onClick={handleRunFlow}
-              disabled={!id || id === 'new' || runFlowOperation.isLoading}
-              sx={{ 
-                color: 'white',
-                boxShadow: '0 4px 20px rgba(102, 126, 234, 0.3)',
-                '&:hover': {
-                  transform: 'translateY(-2px)',
-                  boxShadow: '0 8px 32px rgba(102, 126, 234, 0.4)',
-                }
-              }}
-            >
-              {runFlowOperation.isLoading ? 'Starting...' : 'Run Flow'}
-            </Button>
-          </Box>
-        </Box>
-      </Paper>
+      <FlowToolbar
+        flowName={tempFlowName}
+        flowDescription={tempFlowDescription}
+        onFlowNameChange={(name) => {
+          flowEditActions.setTempFlowName(name);
+          debouncedSetSaveStatus('unsaved');
+        }}
+        onFlowDescriptionChange={(description) => {
+          flowEditActions.setTempFlowDescription(description);
+          debouncedSetSaveStatus('unsaved');
+        }}
+        autoSaveEnabled={autoSaveEnabled}
+        saveStatus={saveStatus}
+        lastSaved={lastSaved}
+        onToggleAutoSave={toggleAutoSave}
+        onSave={() => handleSave()}
+        onExport={handleExport}
+        onImport={handleImport}
+        onOpenAPIImport={() => uiActions.setOpenAPIDialogOpen(true)}
+        onRunFlow={handleRunFlow}
+        canRunFlow={!(!id || id === 'new' || runFlowOperation.isLoading)}
+        isSaving={saveFlowOperation.isLoading}
+        isRunning={runFlowOperation.isLoading}
+      />
 
       <Box sx={{ 
         display: 'flex', 
@@ -1490,32 +1437,19 @@ export default function FlowEditor() {
           <StepPanel onAddStep={handleAddStep} />
         </ComponentErrorBoundary>
         
-        <Box sx={{ flex: 1 }}>
-          <ComponentErrorBoundary context="Flow Canvas">
-            <ReactFlow
-              nodes={nodesWithResults}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeClick={onNodeClick}
-              onNodeContextMenu={onNodeContextMenu}
-              onNodeDragStop={handleNodeDragStop}
-              onNodesDelete={onNodesDelete}
-              onDragOver={onDragOver}
-              onDrop={onDrop}
-              nodeTypes={nodeTypes}
-              deleteKeyCode="Delete"
-              nodesDraggable={true}
-              nodesConnectable={true}
-              elementsSelectable={true}
-            >
-              <Controls />
-              <MiniMap />
-              <Background variant={'dots' as any} gap={12} size={1} />
-            </ReactFlow>
-          </ComponentErrorBoundary>
-        </Box>
+        <FlowCanvas
+          nodes={nodesWithResults}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onNodeContextMenu={onNodeContextMenu}
+          onNodeDragStop={handleNodeDragStop}
+          onNodesDelete={onNodesDelete}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+        />
 
         {selectedNode && (
           <Box sx={{ 
@@ -1538,59 +1472,18 @@ export default function FlowEditor() {
         )}
       </Box>
       
-      {/* Console Panel */}
-      <Box sx={{
-        flexShrink: 0, // Prevent console from shrinking
-        backgroundColor: 'background.paper',
-        borderTop: 1,
-        borderColor: 'divider'
-      }}>
-        <Box 
-          sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            px: 2,
-            py: 0.5,
-            backgroundColor: 'background.paper',
-            cursor: 'pointer',
-            borderBottom: consoleOpen ? 1 : 0,
-            borderColor: 'divider'
-          }}
-          onClick={toggleConsole}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <TerminalIcon fontSize="small" />
-            <Typography variant="body2">Console</Typography>
-            {consoleLogs.length > 0 && (
-              <Typography variant="caption" color="text.secondary">
-                ({consoleLogs.length} logs)
-              </Typography>
-            )}
-          </Box>
-          <IconButton size="small">
-            {consoleOpen ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-          </IconButton>
-        </Box>
-        <Collapse in={consoleOpen}>
-          <Box sx={{ height: 300 }}>
-            <ComponentErrorBoundary context="Interactive Console">
-              <InteractiveConsole 
-                logs={consoleLogs}
-                onClear={testExecutionActions.clearConsoleLogs}
-                onCommand={handleConsoleCommand}
-                maxHeight={300}
-                autoScroll={true}
-                context={{
-                  environmentVariables,
-                  stepResults,
-                  selectedNode
-                }}
-              />
-            </ComponentErrorBoundary>
-          </Box>
-        </Collapse>
-      </Box>
+      <FlowConsole
+        isOpen={consoleOpen}
+        logs={consoleLogs}
+        onToggle={toggleConsole}
+        onClear={testExecutionActions.clearConsoleLogs}
+        onCommand={handleConsoleCommand}
+        context={{
+          environmentVariables,
+          stepResults,
+          selectedNode
+        }}
+      />
       
       <Snackbar
         open={snackbar.open}

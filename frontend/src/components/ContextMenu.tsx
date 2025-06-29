@@ -1,4 +1,3 @@
-import React from 'react';
 import { Menu, MenuItem, Divider, ListItemIcon, ListItemText } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ContentPasteIcon from '@mui/icons-material/ContentPaste';

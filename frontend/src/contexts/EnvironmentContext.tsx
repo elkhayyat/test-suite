@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Environment } from '../../../shared/src/types';
 import { api } from '../services/api';
 
@@ -42,7 +42,12 @@ export function EnvironmentProvider({ children }: EnvironmentProviderProps) {
       if (selectedEnvironment) {
         try {
           const variables = await api.getEnvironmentVariables(selectedEnvironment);
-          setEnvironmentVariables(variables);
+          // Convert array to object for backward compatibility
+          const variablesObject = variables.reduce((acc: { [key: string]: string }, variable) => {
+            acc[variable.key] = variable.value;
+            return acc;
+          }, {});
+          setEnvironmentVariables(variablesObject);
         } catch (error) {
           console.error('Failed to load environment variables:', error);
           setEnvironmentVariables({});
