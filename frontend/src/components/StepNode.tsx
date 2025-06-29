@@ -12,12 +12,16 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import PauseIcon from '@mui/icons-material/Pause';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import InfoIcon from '@mui/icons-material/Info';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
 import { TestStep, StepResult } from '../../../shared/src/types';
 import StepDetailsModal from './StepDetailsModal';
 
 interface StepNodeData extends TestStep {
   result?: StepResult;
   isRunning?: boolean;
+  isSelected?: boolean;
+  selectionMode?: boolean;
 }
 
 interface StepNodeProps {
@@ -174,8 +178,8 @@ export default function StepNode({ data }: StepNodeProps) {
         minWidth: 250,
         cursor: 'move',
         transition: 'all 0.3s ease',
-        border: data.result ? `2px solid` : '1px solid',
-        borderColor: data.result ? 
+        border: data.isSelected ? '3px solid' : data.result ? `2px solid` : '1px solid',
+        borderColor: data.isSelected ? 'primary.main' : data.result ? 
           (data.result.status === 'passed' ? 'success.main' : 
            data.result.status === 'failed' ? 'error.main' :
            data.result.status === 'running' ? 'primary.main' : 
@@ -184,11 +188,17 @@ export default function StepNode({ data }: StepNodeProps) {
         position: 'relative',
         overflow: 'hidden',
         ...getStatusBackground(),
+        ...(data.isSelected && {
+          boxShadow: '0 0 0 2px rgba(25, 118, 210, 0.5)',
+          backgroundColor: 'rgba(25, 118, 210, 0.08)',
+        }),
         '&:hover': {
           transform: 'scale(1.05)',
-          boxShadow: (theme) => theme.palette.mode === 'dark' 
-            ? '0 8px 32px rgba(255,255,255,0.1)' 
-            : '0 8px 32px rgba(0,0,0,0.15)',
+          boxShadow: (theme) => data.isSelected 
+            ? '0 0 0 2px rgba(25, 118, 210, 0.5), 0 8px 32px rgba(0,0,0,0.15)'
+            : theme.palette.mode === 'dark' 
+              ? '0 8px 32px rgba(255,255,255,0.1)' 
+              : '0 8px 32px rgba(0,0,0,0.15)',
         }
       }}
     >
@@ -253,6 +263,34 @@ export default function StepNode({ data }: StepNodeProps) {
                            data.result.status === 'skipped' ? 'warning.main' : 'transparent'
           }}
         />
+      )}
+
+      {/* Selection Checkbox */}
+      {data.selectionMode && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 10,
+            backgroundColor: 'background.paper',
+            borderRadius: '4px',
+            border: '1px solid',
+            borderColor: data.isSelected ? 'primary.main' : 'divider',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 24,
+            height: 24,
+            boxShadow: 1
+          }}
+        >
+          {data.isSelected ? (
+            <CheckBoxIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+          ) : (
+            <CheckBoxOutlineBlankIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+          )}
+        </Box>
       )}
       
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, p: 2 }}>

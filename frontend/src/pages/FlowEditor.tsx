@@ -141,16 +141,22 @@ export default function FlowEditor() {
   } = testExecutionState;
 
   // Clipboard state (keeping separate as it's simple and has special localStorage logic)
-  const [clipboard, setClipboard] = useState<TestStep | null>(() => {
+  const [clipboard, setClipboard] = useState<TestStep[] | null>(() => {
     const saved = localStorage.getItem('stepClipboard');
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Handle legacy single-item format
+      return Array.isArray(parsed) ? parsed : [parsed];
+    }
+    return null;
   });
 
   // Helper function to update clipboard and localStorage
-  const updateClipboard = (step: TestStep | null) => {
-    setClipboard(step);
-    if (step) {
-      localStorage.setItem('stepClipboard', JSON.stringify(step));
+  const updateClipboard = (steps: TestStep[] | TestStep | null) => {
+    const clipboardData = steps === null ? null : Array.isArray(steps) ? steps : [steps];
+    setClipboard(clipboardData);
+    if (clipboardData) {
+      localStorage.setItem('stepClipboard', JSON.stringify(clipboardData));
     } else {
       localStorage.removeItem('stepClipboard');
     }
@@ -233,6 +239,10 @@ export default function FlowEditor() {
     // Check if we're on the new flow path (either by id="new" or pathname="/flows/new")
     const isNewFlow = id === 'new' || location.pathname === '/flows/new';
     
+    // Clear multi-selection when navigating to any flow
+    selectNone();
+    uiActions.setSelectionMode(false);
+    
     if (id && id !== 'new' && !isNewFlow) {
       loadFlow(id);
     } else if (isNewFlow) {
@@ -249,7 +259,7 @@ export default function FlowEditor() {
         isInitialLoadRef.current = false;
       }, 100);
     }
-  }, [id, searchParams, location.pathname]);
+  }, [id, searchParams, location.pathname, selectNone, uiActions]);
 
   // Handle debounced flow name updates
   useEffect(() => {
@@ -428,58 +438,6 @@ export default function FlowEditor() {
     // to avoid conflicts with the undo/redo system
   }, [stepResults, currentRun]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      try {
-        // Check if user is typing in an input field
-        if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
-          return;
-        }
-
-        // Copy (Cmd/Ctrl + C)
-        if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedNode) {
-          updateClipboard(selectedNode.data as TestStep);
-          setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
-        }
-
-        // Paste (Cmd/Ctrl + V)
-        if ((e.metaKey || e.ctrlKey) && e.key === 'v' && clipboard) {
-          const newNode: Node = {
-            id: `${Date.now()}`,
-            type: 'testStep',
-            position: calculateOffsetPosition(selectedNode?.position),
-            data: {
-              ...clipboard,
-              id: `${Date.now()}`,
-              name: `${clipboard.name} (Copy)`,
-            },
-          };
-          undoableAddNode(newNode);
-          setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
-          debouncedSetSaveStatus('unsaved');
-        }
-
-        // Delete (Delete or Backspace)
-        if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNode) {
-          undoableDeleteNode(selectedNode.id);
-          uiActions.setSelectedNode(null);
-          debouncedSetSaveStatus('unsaved');
-        }
-      } catch (error) {
-        console.error('Keyboard shortcut error:', error);
-        setSnackbar({
-          open: true,
-          message: 'An error occurred with keyboard shortcut',
-          severity: 'error'
-        });
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [selectedNode, clipboard, undoableAddNode, undoableDeleteNode, debouncedSetSaveStatus]);
 
   const loadFlow = async (flowId: string) => {
     try {
@@ -1097,14 +1055,13 @@ export default function FlowEditor() {
     if (selectedNodes.length === 0) return;
     
     try {
-      // For now, copy the first selected item to clipboard
-      // In a more advanced implementation, you might want to support copying multiple items
-      const firstNode = selectedNodes[0];
-      updateClipboard(firstNode.data as TestStep);
+      // Copy all selected items to clipboard as an array
+      const selectedSteps = selectedNodes.map(node => node.data as TestStep);
+      updateClipboard(selectedSteps);
       
       setSnackbar({ 
         open: true, 
-        message: `Copied ${selectedNodes.length === 1 ? `"${firstNode.data.name}"` : `${selectedNodes.length} steps (first item to clipboard)`}`, 
+        message: `Copied ${selectedNodes.length} step${selectedNodes.length === 1 ? '' : 's'}`, 
         severity: 'success' 
       });
     } catch (error) {
@@ -1157,34 +1114,74 @@ export default function FlowEditor() {
     {
       ...commonShortcuts.copy,
       action: () => {
-        if (selectedNode) {
+        if (hasSelection) {
+          // Multi-selection copy
+          handleBulkCopy();
+        } else if (selectedNode) {
+          // Single selection copy
           updateClipboard(selectedNode.data as TestStep);
           setSnackbar({ open: true, message: `Copied "${selectedNode.data.name}"`, severity: 'success' });
         }
       },
-      description: 'Copy selected step',
-      enabled: !!selectedNode,
+      description: 'Copy selected step(s)',
+      enabled: !!selectedNode || hasSelection,
     },
     {
       ...commonShortcuts.paste,
       action: () => {
         if (clipboard) {
-          const newNode: Node = {
-            id: `${Date.now()}`,
-            type: 'testStep',
-            position: calculateOffsetPosition(selectedNode?.position),
-            data: {
-              ...clipboard,
-              id: `${Date.now()}`,
-              name: `${clipboard.name} (Copy)`,
-            },
-          };
-          undoableAddNode(newNode);
-          setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
-          debouncedSetSaveStatus('unsaved');
+          try {
+            if (Array.isArray(clipboard)) {
+              // Paste multiple items
+              const basePosition = calculateOffsetPosition(selectedNode?.position);
+              const newNodes: Node[] = clipboard.map((step, index) => ({
+                id: `${Date.now()}-${index}`,
+                type: 'testStep',
+                position: {
+                  x: basePosition.x + (index * 20),
+                  y: basePosition.y + (index * 120)
+                },
+                data: {
+                  ...step,
+                  id: `${Date.now()}-${index}`,
+                  name: `${step.name} (Copy)`,
+                },
+              }));
+              
+              // Add all nodes
+              newNodes.forEach(node => undoableAddNode(node));
+              setSnackbar({ 
+                open: true, 
+                message: `Pasted ${clipboard.length} step${clipboard.length === 1 ? '' : 's'}`, 
+                severity: 'success' 
+              });
+            } else {
+              // Paste single item
+              const newNode: Node = {
+                id: `${Date.now()}`,
+                type: 'testStep',
+                position: calculateOffsetPosition(selectedNode?.position),
+                data: {
+                  ...clipboard,
+                  id: `${Date.now()}`,
+                  name: `${clipboard.name} (Copy)`,
+                },
+              };
+              undoableAddNode(newNode);
+              setSnackbar({ open: true, message: `Pasted "${clipboard.name}"`, severity: 'success' });
+            }
+            debouncedSetSaveStatus('unsaved');
+          } catch (error) {
+            console.error('Failed to paste:', error);
+            setSnackbar({
+              open: true,
+              message: `Failed to paste: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              severity: 'error'
+            });
+          }
         }
       },
-      description: 'Paste step',
+      description: 'Paste step(s)',
       enabled: !!clipboard,
     },
     {
@@ -1279,6 +1276,7 @@ export default function FlowEditor() {
       },
       description: 'Select all steps',
       enabled: nodes.length > 0,
+      preventDefault: true, // Explicitly prevent browser default
     },
     {
       key: 's',
