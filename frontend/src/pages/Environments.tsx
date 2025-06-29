@@ -22,11 +22,9 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import SettingsIcon from '@mui/icons-material/Settings';
 import AddIcon from '@mui/icons-material/Add';
 import CloudIcon from '@mui/icons-material/Cloud';
 import PublicIcon from '@mui/icons-material/Public';
-import SecurityIcon from '@mui/icons-material/Security';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
@@ -46,7 +44,7 @@ export default function Environments() {
   });
   const [variablesDialogOpen, setVariablesDialogOpen] = useState(false);
   const [selectedEnvironment, setSelectedEnvironment] = useState<Environment | null>(null);
-  const [importingEnvId, setImportingEnvId] = useState<string>('');
+  const [, setImportingEnvId] = useState<string>('');
 
   useEffect(() => {
     loadEnvironments();

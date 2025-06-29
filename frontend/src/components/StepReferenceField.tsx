@@ -155,10 +155,10 @@ export default function StepReferenceField({
       filterOptions={(options) => options} // We're already filtering
       freeSolo
       disableClearable
-      value={null}
+      value={undefined}
       onChange={handleAutocompleteChange}
       inputValue={inputValue}
-      onInputChange={(_, value, reason) => {
+      onInputChange={(_, _value, reason) => {
         if (reason === 'input') {
           // Handled by our custom onChange
         }

@@ -35,6 +35,7 @@ export interface TestRun {
   endTime?: Date;
   results: StepResult[];
   selectedSteps?: string[];
+  error?: string;
 }
 
 export type StepOutput = {
@@ -58,6 +59,7 @@ export interface StepResult {
   output?: StepOutput;
   error?: string;
   logs?: ConsoleLog[];
+  duration?: number;
 }
 
 export interface ConsoleLog {

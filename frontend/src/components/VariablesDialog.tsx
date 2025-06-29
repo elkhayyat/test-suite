@@ -42,7 +42,7 @@ export default function VariablesDialog({ open, environment, onClose }: Variable
   const [variables, setVariables] = useState<EnvironmentVariable[]>([]);
   const [newVariable, setNewVariable] = useState({ key: '', value: '', isSecret: false });
   const [showSecrets, setShowSecrets] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [editingVariable, setEditingVariable] = useState<{ originalKey: string; key: string; value: string } | null>(null);
   const [randomHelpOpen, setRandomHelpOpen] = useState(false);
 

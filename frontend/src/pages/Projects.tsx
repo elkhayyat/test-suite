@@ -45,7 +45,7 @@ export default function Projects() {
     name: '',
     description: '',
   });
-  const [importingProjectId, setImportingProjectId] = useState<string>('');
+  const [, setImportingProjectId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 

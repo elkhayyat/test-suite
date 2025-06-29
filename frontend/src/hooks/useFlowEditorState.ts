@@ -1,5 +1,5 @@
 import { useReducer, useCallback } from 'react';
-import { Node, Edge } from 'react-flow-renderer';
+import { Node } from 'react-flow-renderer';
 import { TestRun, StepResult, ConsoleLog } from '../../../shared/src/types';
 
 // Flow editing state
