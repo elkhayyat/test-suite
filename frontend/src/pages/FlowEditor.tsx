@@ -1518,6 +1518,7 @@ export default function FlowEditor() {
           open={openAPIDialogOpen}
           onClose={() => uiActions.setOpenAPIDialogOpen(false)}
           onImport={handleOpenAPIImport}
+          projectId={searchParams.get('projectId') || undefined}
         />
       </ComponentErrorBoundary>
       
