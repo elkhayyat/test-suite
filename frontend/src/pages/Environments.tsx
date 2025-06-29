@@ -32,8 +32,10 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { Environment } from '../../../shared/src/types';
 import { api } from '../services/api';
 import VariablesDialog from '../components/VariablesDialog';
+import { useEnvironment } from '../contexts/EnvironmentContext';
 
 export default function Environments() {
+  const { refreshEnvironments } = useEnvironment();
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEnv, setEditingEnv] = useState<Environment | null>(null);
@@ -97,6 +99,7 @@ export default function Environments() {
       }
       handleCloseDialog();
       loadEnvironments();
+      refreshEnvironments(); // Refresh the global environment context
     } catch (error) {
       console.error('Failed to save environment:', error);
     }
@@ -107,6 +110,7 @@ export default function Environments() {
       try {
         await api.deleteEnvironment(id);
         loadEnvironments();
+        refreshEnvironments(); // Refresh the global environment context
       } catch (error) {
         console.error('Failed to delete environment:', error);
       }
@@ -150,6 +154,7 @@ export default function Environments() {
           await api.importEnvironment(envId, importData);
           alert('Environment imported successfully!');
           loadEnvironments();
+          refreshEnvironments(); // Refresh the global environment context
         } catch (error) {
           console.error('Failed to import environment:', error);
           alert('Failed to import environment. Please check the file format.');
@@ -170,6 +175,7 @@ export default function Environments() {
     try {
       const duplicatedEnv = await api.duplicateEnvironment(envId);
       loadEnvironments();
+      refreshEnvironments(); // Refresh the global environment context
       alert(`Environment "${duplicatedEnv.name}" duplicated successfully!`);
     } catch (error) {
       console.error('Failed to duplicate environment:', error);

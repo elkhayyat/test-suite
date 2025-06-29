@@ -8,6 +8,7 @@ import { chromium, Browser, Page } from 'playwright';
 import { TestRun, TestFlow, TestStep, StepResult, SubflowStepConfig, IFlowStore, IEnvironmentStore } from '../../../shared/src/types';
 import { FlowStore } from './FlowStore';
 import { EnvironmentStore } from './EnvironmentStore';
+import { TestRunStoreMongo } from './TestRunStoreMongo';
 import { VariableInterpolator } from './VariableInterpolator';
 import { EnhancedInterpolator } from './EnhancedInterpolator';
 import { ConsoleLogger } from './ConsoleLogger';
@@ -19,10 +20,12 @@ export class TestRunner {
   private activeRuns: Set<string> = new Set();
   private environmentStore: IEnvironmentStore;
   private consoleLogger: ConsoleLogger;
+  private runStore?: TestRunStoreMongo;
 
-  constructor(private io: Server, private flowStore: IFlowStore, environmentStore: IEnvironmentStore) {
+  constructor(private io: Server, private flowStore: IFlowStore, environmentStore: IEnvironmentStore, runStore?: TestRunStoreMongo) {
     this.environmentStore = environmentStore;
     this.consoleLogger = new ConsoleLogger(io);
+    this.runStore = runStore;
   }
 
   getAllRuns(): TestRun[] {
@@ -64,22 +67,26 @@ export class TestRunner {
       (!!newResult.endTime && !!existingResult.endTime && newResult.endTime > existingResult.endTime);
   }
 
-  async startRun(flowId: string, environmentId?: string, selectedSteps?: string[]): Promise<string> {
+  async startRun(flowId: string, environmentId?: string, selectedSteps?: string[], organizationId?: string, userId?: string): Promise<string> {
     const flow = await this.flowStore.getFlow(flowId);
     if (!flow) {
       throw new Error('Flow not found');
     }
 
-    // If no environment specified, use the default
-    if (!environmentId) {
-      const environments = await this.environmentStore.getAllEnvironments();
+    // If no environment specified, use the default for the organization
+    if (!environmentId && organizationId && this.environmentStore.getEnvironmentsByOrganization) {
+      const environments = await this.environmentStore.getEnvironmentsByOrganization(organizationId);
       const defaultEnv = environments.find((e: any) => e.isDefault);
-      environmentId = defaultEnv?.id || 'default';
+      environmentId = defaultEnv?.id;
     }
 
     const run: TestRun = {
       id: uuidv4(),
       flowId,
+      flowName: flow.name,
+      projectId: flow.projectId,
+      organizationId: organizationId || 'default-org',
+      userId: userId || 'system',
       environmentId,
       status: 'running',
       startTime: new Date(),

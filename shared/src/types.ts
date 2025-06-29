@@ -29,6 +29,10 @@ export interface Connection {
 export interface TestRun {
   id: string;
   flowId: string;
+  flowName?: string;
+  projectId?: string;
+  organizationId: string;
+  userId: string;
   environmentId?: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   startTime: Date;
@@ -186,6 +190,7 @@ export interface IFlowStore {
 
 export interface IEnvironmentStore {
   getAllEnvironments(): Promise<Environment[]>;
+  getEnvironmentsByOrganization?(organizationId: string): Promise<Environment[]>;
   getEnvironment(id: string): Promise<Environment | undefined | null>;
   createEnvironment(data: Partial<Environment>): Promise<Environment>;
   updateEnvironment(id: string, data: Partial<Environment>): Promise<Environment | null | undefined>;

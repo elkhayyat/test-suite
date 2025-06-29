@@ -1,8 +1,9 @@
 import { MongoClient, Db, Collection } from 'mongodb';
-import { TestFlow, Environment, EnvironmentVariable, Project, Folder, User, Organization, Team, TeamUser, ProjectTeam } from '../../../shared/src/types';
+import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, User, Organization, Team, TeamUser, ProjectTeam } from '../../../shared/src/types';
 
 export interface DbCollections {
   flows: Collection<TestFlow>;
+  runs: Collection<TestRun>;
   environments: Collection<Environment>;
   environmentVariables: Collection<EnvironmentVariable>;
   projects: Collection<Project>;
@@ -33,6 +34,7 @@ export class MongoDB {
     // Initialize collections
     this.collections = {
       flows: this.db.collection<TestFlow>('flows'),
+      runs: this.db.collection<TestRun>('runs'),
       environments: this.db.collection<Environment>('environments'),
       environmentVariables: this.db.collection<EnvironmentVariable>('environmentVariables'),
       projects: this.db.collection<Project>('projects'),
@@ -79,6 +81,12 @@ export class MongoDB {
     await this.collections.flows.createIndex({ projectId: 1 });
     await this.collections.flows.createIndex({ folderId: 1 });
     await this.collections.flows.createIndex({ name: 1, projectId: 1 });
+    
+    // Test runs indexes
+    await this.collections.runs.createIndex({ organizationId: 1, startTime: -1 });
+    await this.collections.runs.createIndex({ flowId: 1 });
+    await this.collections.runs.createIndex({ userId: 1 });
+    await this.collections.runs.createIndex({ status: 1 });
     
     // Environment indexes
     await this.collections.environments.createIndex({ organizationId: 1 });

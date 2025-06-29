@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FormControl, InputLabel, Select, MenuItem, SelectChangeEvent } from '@mui/material';
-import { Environment } from '../../../shared/src/types';
-import { api } from '../services/api';
+import { useEnvironment } from '../contexts/EnvironmentContext';
 
 interface EnvironmentSelectorProps {
   value?: string;
@@ -10,12 +9,8 @@ interface EnvironmentSelectorProps {
 }
 
 export default function EnvironmentSelector({ value, onChange, size = 'medium' }: EnvironmentSelectorProps) {
-  const [environments, setEnvironments] = useState<Environment[]>([]);
+  const { environments } = useEnvironment();
   const [selectedEnv, setSelectedEnv] = useState<string>('');
-
-  useEffect(() => {
-    loadEnvironments();
-  }, []);
 
   useEffect(() => {
     if (value) {
@@ -27,15 +22,6 @@ export default function EnvironmentSelector({ value, onChange, size = 'medium' }
       onChange(defaultEnv.id);
     }
   }, [value, environments, selectedEnv, onChange]);
-
-  const loadEnvironments = async () => {
-    try {
-      const data = await api.getEnvironments();
-      setEnvironments(data);
-    } catch (error) {
-      console.error('Failed to load environments:', error);
-    }
-  };
 
   const handleChange = (event: SelectChangeEvent) => {
     const envId = event.target.value;

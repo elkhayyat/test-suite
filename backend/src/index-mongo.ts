@@ -10,6 +10,7 @@ import { EnvironmentStore } from './services/EnvironmentStoreMongo';
 import { ProjectStore } from './services/ProjectStoreMongo';
 import { UserStoreMongo } from './services/UserStoreMongo';
 import { OrganizationStoreMongo } from './services/OrganizationStoreMongo';
+import { TestRunStoreMongo } from './services/TestRunStoreMongo';
 import { AuthService } from './services/AuthService';
 import { TestRunner } from './services/TestRunner';
 import { flowRoutes } from './routes/flows-mongo';
@@ -31,6 +32,7 @@ async function startServer() {
   const projectStore = new ProjectStore(mongodb);
   const userStore = new UserStoreMongo(mongodb.db);
   const organizationStore = new OrganizationStoreMongo(mongodb.db);
+  const runStore = new TestRunStoreMongo(mongodb.db);
   const authService = new AuthService();
 
   const app = express();
@@ -49,7 +51,7 @@ async function startServer() {
   app.use(express.json());
   app.use(cookieParser());
 
-  const testRunner = new TestRunner(io, flowStore, environmentStore);
+  const testRunner = new TestRunner(io, flowStore, environmentStore, runStore);
 
   const API_BASE_PATH = process.env.API_BASE_PATH || '/api';
 
@@ -58,7 +60,7 @@ async function startServer() {
 
   // Protected routes (auth required)
   app.use(`${API_BASE_PATH}/flows`, authMiddleware(authService), flowRoutes(flowStore, projectStore, organizationStore));
-  app.use(`${API_BASE_PATH}/runs`, authMiddleware(authService), runRoutes(testRunner));
+  app.use(`${API_BASE_PATH}/runs`, authMiddleware(authService), runRoutes(testRunner, flowStore, projectStore));
   app.use(`${API_BASE_PATH}/environments`, authMiddleware(authService), environmentRoutes(environmentStore));
   app.use(`${API_BASE_PATH}/projects`, authMiddleware(authService), projectRoutes(projectStore, flowStore, organizationStore));
   app.use(`${API_BASE_PATH}/organizations`, authMiddleware(authService), organizationRoutes);
