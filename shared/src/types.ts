@@ -282,6 +282,13 @@ export interface TeamUser {
   updatedAt: Date;
 }
 
+export interface TeamUserWithDetails extends TeamUser {
+  user: {
+    email: string;
+    name: string;
+  };
+}
+
 export interface ProjectTeam {
   id: string;
   projectId: string;

@@ -17,7 +17,7 @@ import { flowRoutes } from './routes/flows-mongo';
 import { runRoutes } from './routes/runs';
 import { environmentRoutes } from './routes/environments-mongo';
 import { projectRoutes } from './routes/projects-mongo';
-import organizationRoutes from './routes/organizations';
+import { organizationRoutes } from './routes/organizations-mongo';
 import { authRoutes } from './routes/authRoutes';
 import { authMiddleware } from './middleware/auth';
 
@@ -31,7 +31,7 @@ async function startServer() {
   const environmentStore = new EnvironmentStore(mongodb);
   const projectStore = new ProjectStore(mongodb);
   const userStore = new UserStoreMongo(mongodb.db);
-  const organizationStore = new OrganizationStoreMongo(mongodb.db);
+  const organizationStore = new OrganizationStoreMongo(mongodb.db, userStore);
   const runStore = new TestRunStoreMongo(mongodb.db);
   const authService = new AuthService();
 
@@ -63,7 +63,7 @@ async function startServer() {
   app.use(`${API_BASE_PATH}/runs`, authMiddleware(authService), runRoutes(testRunner, flowStore, projectStore));
   app.use(`${API_BASE_PATH}/environments`, authMiddleware(authService), environmentRoutes(environmentStore));
   app.use(`${API_BASE_PATH}/projects`, authMiddleware(authService), projectRoutes(projectStore, flowStore, organizationStore));
-  app.use(`${API_BASE_PATH}/organizations`, authMiddleware(authService), organizationRoutes);
+  app.use(`${API_BASE_PATH}/organizations`, authMiddleware(authService), organizationRoutes(organizationStore));
 
   // Proxy endpoint for external API requests (CORS workaround)
   app.get(`${API_BASE_PATH}/proxy`, async (req, res) => {

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, Organization, Team, TeamUser, ProjectTeam } from '../../../shared/src/types';
+import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, Organization, Team, TeamUser, TeamUserWithDetails, ProjectTeam } from '../../../shared/src/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -232,7 +232,7 @@ export const api = {
   },
 
   // Team Users
-  async getTeamUsers(organizationId: string, teamId: string): Promise<TeamUser[]> {
+  async getTeamUsers(organizationId: string, teamId: string): Promise<TeamUserWithDetails[]> {
     const response = await apiClient.get(`/organizations/${organizationId}/teams/${teamId}/users`);
     return response.data;
   },

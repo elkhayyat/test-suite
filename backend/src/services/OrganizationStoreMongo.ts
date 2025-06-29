@@ -1,18 +1,23 @@
 import { Db, Collection } from 'mongodb';
-import { Organization, Team, TeamUser } from '../../../shared/src/types';
+import { Organization, Team, TeamUser, TeamUserWithDetails, User } from '../../../shared/src/types';
 import { v4 as uuidv4 } from 'uuid';
+import { UserStoreMongo } from './UserStoreMongo';
 
 export class OrganizationStoreMongo {
   private db: Db;
   private organizations: Collection<Organization>;
   private teams: Collection<Team>;
   private teamUsers: Collection<TeamUser>;
+  private users: Collection<User>;
+  private userStore: UserStoreMongo;
 
-  constructor(db: Db) {
+  constructor(db: Db, userStore: UserStoreMongo) {
     this.db = db;
     this.organizations = db.collection<Organization>('organizations');
     this.teams = db.collection<Team>('teams');
     this.teamUsers = db.collection<TeamUser>('teamUsers');
+    this.users = db.collection<User>('users');
+    this.userStore = userStore;
   }
 
   // Organization methods
@@ -150,6 +155,26 @@ export class OrganizationStoreMongo {
     return this.teamUsers.find({ teamId }).toArray();
   }
 
+  async getTeamUsersWithDetails(teamId: string): Promise<TeamUserWithDetails[]> {
+    const teamUsers = await this.teamUsers.find({ teamId }).toArray();
+    
+    const enrichedUsers: TeamUserWithDetails[] = [];
+    for (const teamUser of teamUsers) {
+      const user = await this.userStore.getUserById(teamUser.userId);
+      if (user) {
+        enrichedUsers.push({
+          ...teamUser,
+          user: {
+            email: user.email,
+            name: user.name
+          }
+        });
+      }
+    }
+    
+    return enrichedUsers;
+  }
+
   async getUserTeams(userId: string): Promise<TeamUser[]> {
     return this.teamUsers.find({ userId }).toArray();
   }
@@ -193,5 +218,26 @@ export class OrganizationStoreMongo {
     }
 
     return highestRole;
+  }
+
+  async getUserOrganizations(userId: string): Promise<Organization[]> {
+    // Get all teams the user belongs to
+    const userTeams = await this.teamUsers.find({ userId }).toArray();
+    
+    // Get unique organization IDs from the teams
+    const orgIds = new Set<string>();
+    for (const userTeam of userTeams) {
+      const team = await this.teams.findOne({ id: userTeam.teamId });
+      if (team) {
+        orgIds.add(team.organizationId);
+      }
+    }
+    
+    // Get all organizations the user belongs to
+    const organizations = await this.organizations
+      .find({ id: { $in: Array.from(orgIds) } })
+      .toArray();
+      
+    return organizations;
   }
 }

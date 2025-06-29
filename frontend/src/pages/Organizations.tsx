@@ -35,7 +35,7 @@ import BusinessIcon from '@mui/icons-material/Business';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import DownloadIcon from '@mui/icons-material/Download';
 import UploadIcon from '@mui/icons-material/Upload';
-import { Organization, Team, TeamUser, User, Project, ProjectTeam } from '../../../shared/src/types';
+import { Organization, Team, TeamUser, TeamUserWithDetails, User, Project, ProjectTeam } from '../../../shared/src/types';
 import { api } from '../services/api';
 
 interface TabPanelProps {
@@ -63,7 +63,7 @@ export default function Organizations() {
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
+  const [teamUsers, setTeamUsers] = useState<TeamUserWithDetails[]>([]);
   const [projectTeams, setProjectTeams] = useState<ProjectTeam[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [,] = useState<User[]>([]);
@@ -192,13 +192,14 @@ export default function Organizations() {
   const handleAddUserToTeam = async () => {
     if (!selectedOrg || !selectedTeam) return;
     try {
-      const newTeamUser = await api.addUserToTeam(
+      await api.addUserToTeam(
         selectedOrg.id,
         selectedTeam.id,
         userForm.userId,
         userForm.role as TeamUser['role']
       );
-      setTeamUsers([...teamUsers, newTeamUser]);
+      // Refresh the team users list to get the enriched data
+      await loadTeamUsers(selectedTeam);
       setUserDialogOpen(false);
       setUserForm({ userId: '', role: 'member' });
     } catch (error) {
@@ -501,13 +502,27 @@ export default function Organizations() {
               {teamUsers.map((tu) => (
                 <ListItem key={tu.id}>
                   <ListItemText
-                    primary={tu.userId}
+                    primary={
+                      <Box>
+                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                          {tu.user.name}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {tu.user.email}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          ID: {tu.userId}
+                        </Typography>
+                      </Box>
+                    }
                     secondary={
-                      <Chip
-                        label={tu.role}
-                        size="small"
-                        color={tu.role === 'owner' ? 'error' : tu.role === 'admin' ? 'warning' : 'default'}
-                      />
+                      <Box sx={{ mt: 1 }}>
+                        <Chip
+                          label={tu.role}
+                          size="small"
+                          color={tu.role === 'owner' ? 'error' : tu.role === 'admin' ? 'warning' : 'default'}
+                        />
+                      </Box>
                     }
                   />
                   <ListItemSecondaryAction>
