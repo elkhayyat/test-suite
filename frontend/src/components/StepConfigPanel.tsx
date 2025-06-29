@@ -141,7 +141,7 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
   const handleCurlExport = () => {
     try {
       const config = step.config as HttpStepConfig;
-      const interpolator = new FrontendInterpolator(environmentVariables);
+      const interpolator = new FrontendInterpolator(environmentVariables, availableSteps);
       
       // Create a copy of the config with interpolated values
       const interpolatedConfig: HttpStepConfig = {
@@ -153,7 +153,7 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
       
       const curlCmd = generateCurlCommand(interpolatedConfig);
       
-      // Check if there are any step references that couldn't be resolved
+      // Check if there are any step references that were replaced with placeholders
       const configString = JSON.stringify(config);
       const note = interpolator.getStepReferenceNote(configString);
       setStepReferenceNote(note);
