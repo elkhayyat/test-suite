@@ -12,12 +12,16 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import PauseIcon from '@mui/icons-material/Pause';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import InfoIcon from '@mui/icons-material/Info';
+import CheckBoxIcon from '@mui/icons-material/CheckBox';
+import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
 import { TestStep, StepResult } from '../../../shared/src/types';
 import StepDetailsModal from './StepDetailsModal';
 
 interface StepNodeData extends TestStep {
   result?: StepResult;
   isRunning?: boolean;
+  isSelected?: boolean;
+  selectionMode?: boolean;
 }
 
 interface StepNodeProps {
@@ -174,13 +178,16 @@ export default function StepNode({ data }: StepNodeProps) {
         minWidth: 250,
         cursor: 'move',
         transition: 'all 0.3s ease',
-        border: data.result ? `2px solid` : '1px solid',
-        borderColor: data.result ? 
+        border: data.isSelected ? '3px solid' : (data.result ? `2px solid` : '1px solid'),
+        borderColor: data.isSelected ? 'info.main' : (data.result ? 
           (data.result.status === 'passed' ? 'success.main' : 
            data.result.status === 'failed' ? 'error.main' :
            data.result.status === 'running' ? 'primary.main' : 
            data.result.status === 'skipped' ? 'warning.main' : 'divider') 
-          : 'divider',
+          : 'divider'),
+        boxShadow: data.isSelected ? 
+          (theme) => `0 0 0 3px ${theme.palette.info.main}33, 0 4px 20px ${theme.palette.info.main}66` :
+          'none',
         position: 'relative',
         overflow: 'hidden',
         ...getStatusBackground(),
@@ -193,6 +200,31 @@ export default function StepNode({ data }: StepNodeProps) {
       }}
     >
       <Handle type="target" position={Position.Top} />
+      
+      {/* Selection Checkbox (only shown in selection mode) */}
+      {data.selectionMode && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            zIndex: 10,
+            backgroundColor: 'background.paper',
+            borderRadius: '4px',
+            padding: '2px',
+            boxShadow: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          {data.isSelected ? (
+            <CheckBoxIcon sx={{ fontSize: 20, color: 'info.main' }} />
+          ) : (
+            <CheckBoxOutlineBlankIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+          )}
+        </Box>
+      )}
       
       {/* Status Progress Bar */}
       {data.result?.status === 'running' && (
