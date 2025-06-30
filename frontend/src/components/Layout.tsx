@@ -9,6 +9,7 @@ import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import BusinessIcon from '@mui/icons-material/Business';
+import KeyIcon from '@mui/icons-material/Key';
 import { styled, useTheme } from '@mui/material/styles';
 import { ColorModeContext } from '../App';
 import FlowTree from './FlowTree';
@@ -49,6 +50,7 @@ export default function Layout() {
     { text: 'Projects', icon: <AccountTreeIcon />, path: '/projects' },
     { text: 'Test Runs', icon: <PlayArrowIcon />, path: '/runs' },
     { text: 'Environments', icon: <SettingsIcon />, path: '/environments' },
+    { text: 'API Tokens', icon: <KeyIcon />, path: '/api-tokens' },
     // Only show Organizations to admin users
     ...(user?.role === 'admin' ? [{ text: 'Organizations', icon: <BusinessIcon />, path: '/organizations' }] : []),
   ];

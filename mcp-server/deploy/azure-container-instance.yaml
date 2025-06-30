@@ -1,0 +1,44 @@
+apiVersion: 2019-12-01
+location: eastus
+name: test-flow-mcp-server
+properties:
+  containers:
+  - name: mcp-server
+    properties:
+      image: YOUR_ACR_NAME.azurecr.io/test-flow-mcp-server:latest
+      resources:
+        requests:
+          cpu: 0.5
+          memoryInGb: 0.5
+      ports:
+      - port: 3002
+        protocol: TCP
+      environmentVariables:
+      - name: PORT
+        value: "3002"
+      - name: NODE_ENV
+        value: "production"
+      - name: TEST_FLOW_API_URL
+        secureValue: YOUR_TEST_FLOW_API_URL
+      - name: TEST_FLOW_AUTH_TOKEN
+        secureValue: YOUR_TEST_FLOW_AUTH_TOKEN
+      - name: MCP_AUTH_TOKEN
+        secureValue: YOUR_MCP_AUTH_TOKEN
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 3002
+        initialDelaySeconds: 5
+        periodSeconds: 30
+  osType: Linux
+  ipAddress:
+    type: Public
+    ports:
+    - protocol: tcp
+      port: 3002
+    dnsNameLabel: test-flow-mcp
+  imageRegistryCredentials:
+  - server: YOUR_ACR_NAME.azurecr.io
+    username: YOUR_USERNAME
+    password: YOUR_PASSWORD
+type: Microsoft.ContainerInstance/containerGroups

@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  mcp-server:
+    build:
+      context: ../
+      dockerfile: mcp-server/Dockerfile.local
+    image: test-flow-mcp-server:local
+    container_name: test-flow-mcp-local
+    environment:
+      - NODE_ENV=production
+      - TEST_FLOW_API_URL=http://host.docker.internal:3001
+      # No AUTH_TOKEN - users will provide their own
+    volumes:
+      # Mount stdio for local communication
+      - /tmp/mcp-stdio:/tmp/mcp-stdio
+    stdin_open: true
+    tty: true
+    networks:
+      - test-flow-network
+
+networks:
+  test-flow-network:
+    driver: bridge

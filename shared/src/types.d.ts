@@ -29,12 +29,17 @@ export interface Connection {
 export interface TestRun {
     id: string;
     flowId: string;
+    flowName?: string;
+    projectId?: string;
+    organizationId: string;
+    userId: string;
     environmentId?: string;
     status: 'pending' | 'running' | 'completed' | 'failed';
     startTime: Date;
     endTime?: Date;
     results: StepResult[];
     selectedSteps?: string[];
+    error?: string;
 }
 export type StepOutput = {
     status?: number;
@@ -47,6 +52,15 @@ export type StepOutput = {
     executionTime?: number;
     query?: string;
     summary?: string;
+    resolvedConfig?: {
+        url?: string;
+        method?: string;
+        headers?: Record<string, string>;
+        body?: any;
+        timeout?: number;
+        retries?: number;
+        retryDelay?: number;
+    };
 };
 export interface StepResult {
     stepId: string;
@@ -56,6 +70,7 @@ export interface StepResult {
     output?: StepOutput;
     error?: string;
     logs?: ConsoleLog[];
+    duration?: number;
 }
 export interface ConsoleLog {
     timestamp: Date;
@@ -108,6 +123,7 @@ export interface SubflowStepConfig {
 }
 export interface Environment {
     id: string;
+    organizationId: string;
     name: string;
     description?: string;
     isDefault: boolean;
@@ -137,6 +153,19 @@ export interface Project {
     organizationId: string;
     name: string;
     description?: string;
+    openApiSchemas?: ProjectOpenAPISchema[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+export interface ProjectOpenAPISchema {
+    id: string;
+    projectId: string;
+    name: string;
+    description?: string;
+    version: string;
+    title: string;
+    baseUrl?: string;
+    schema: any;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -145,8 +174,32 @@ export interface Folder {
     projectId: string;
     parentId?: string;
     name: string;
+    description?: string;
     createdAt: Date;
     updatedAt: Date;
+}
+export interface FolderTree extends Folder {
+    children: FolderTree[];
+}
+export interface IFlowStore {
+    flows: Map<string, TestFlow>;
+    loadFlowsFromDatabase(): Promise<void>;
+    getAllFlows(): TestFlow[] | Promise<TestFlow[]>;
+    getFlow(id: string): TestFlow | undefined | Promise<TestFlow | undefined>;
+    createFlow(data: Partial<TestFlow>): Promise<TestFlow>;
+    updateFlow(id: string, data: Partial<TestFlow>): Promise<TestFlow | null | undefined>;
+    deleteFlow(id: string): Promise<boolean>;
+    getFlowsByProject(projectId: string): TestFlow[] | Promise<TestFlow[]>;
+    getFlowsByFolder(folderId: string): TestFlow[] | Promise<TestFlow[]>;
+}
+export interface IEnvironmentStore {
+    getAllEnvironments(): Promise<Environment[]>;
+    getEnvironmentsByOrganization?(organizationId: string): Promise<Environment[]>;
+    getEnvironment(id: string): Promise<Environment | undefined | null>;
+    createEnvironment(data: Partial<Environment>): Promise<Environment>;
+    updateEnvironment(id: string, data: Partial<Environment>): Promise<Environment | null | undefined>;
+    deleteEnvironment(id: string): Promise<boolean>;
+    getEnvironmentVariables(environmentId?: string): Promise<EnvironmentVariable[]>;
 }
 export interface User {
     id: string;
@@ -154,8 +207,42 @@ export interface User {
     name: string;
     role: 'admin' | 'developer' | 'tester' | 'viewer';
     organizationId?: string;
+    activeEnvironmentId?: string;
     createdAt: Date;
     updatedAt: Date;
+}
+export interface UserWithPassword extends User {
+    passwordHash: string;
+}
+export interface RegisterRequest {
+    email: string;
+    password: string;
+    name: string;
+    organizationName?: string;
+}
+export interface LoginRequest {
+    email: string;
+    password: string;
+}
+export interface AuthResponse {
+    user: User;
+    token: string;
+    organization?: Organization;
+}
+export interface InvitationRequest {
+    email: string;
+    teamId: string;
+    role: 'admin' | 'member' | 'viewer';
+}
+export interface InvitationResponse {
+    id: string;
+    email: string;
+    organizationId: string;
+    teamId: string;
+    role: string;
+    invitedBy: string;
+    expiresAt: Date;
+    createdAt: Date;
 }
 export interface ProjectUser {
     id: string;
@@ -186,6 +273,12 @@ export interface TeamUser {
     role: 'owner' | 'admin' | 'member' | 'viewer';
     createdAt: Date;
     updatedAt: Date;
+}
+export interface TeamUserWithDetails extends TeamUser {
+    user: {
+        email: string;
+        name: string;
+    };
 }
 export interface ProjectTeam {
     id: string;

@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  mcp-server:
+    build:
+      context: ../
+      dockerfile: mcp-server/Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - TEST_FLOW_API_URL=${TEST_FLOW_API_URL:-http://host.docker.internal:3001}
+      - TEST_FLOW_AUTH_TOKEN=${TEST_FLOW_AUTH_TOKEN}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); })"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
