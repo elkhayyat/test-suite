@@ -12,6 +12,7 @@ import { UserStoreMongo } from './services/UserStoreMongo';
 import { OrganizationStoreMongo } from './services/OrganizationStoreMongo';
 import { TestRunStoreMongo } from './services/TestRunStoreMongo';
 import { AuthService } from './services/AuthService';
+import { ApiTokenServiceMongo } from './services/ApiTokenServiceMongo';
 import { TestRunner } from './services/TestRunner';
 import { flowRoutes } from './routes/flows-mongo';
 import { runRoutes } from './routes/runs';
@@ -19,7 +20,9 @@ import { environmentRoutes } from './routes/environments-mongo';
 import { projectRoutes } from './routes/projects-mongo';
 import { organizationRoutes } from './routes/organizations-mongo';
 import { authRoutes } from './routes/authRoutes';
+import { apiTokenRoutes } from './routes/apiTokenRoutes';
 import { authMiddleware } from './middleware/auth';
+import { combinedAuth } from './middleware/combinedAuth';
 
 async function startServer() {
   // Initialize MongoDB connection
@@ -34,6 +37,7 @@ async function startServer() {
   const organizationStore = new OrganizationStoreMongo(mongodb.db, userStore);
   const runStore = new TestRunStoreMongo(mongodb.db);
   const authService = new AuthService();
+  const apiTokenService = new ApiTokenServiceMongo(mongodb.db);
 
   const app = express();
   const httpServer = createServer(app);
@@ -59,12 +63,14 @@ async function startServer() {
   // Auth routes (no auth required)
   app.use(`${API_BASE_PATH}/auth`, authRoutes(authService, userStore, organizationStore));
 
-  // Protected routes (auth required)
-  app.use(`${API_BASE_PATH}/flows`, authMiddleware(authService), flowRoutes(flowStore, projectStore, organizationStore));
-  app.use(`${API_BASE_PATH}/runs`, authMiddleware(authService), runRoutes(testRunner, flowStore, projectStore, runStore));
-  app.use(`${API_BASE_PATH}/environments`, authMiddleware(authService), environmentRoutes(environmentStore));
-  app.use(`${API_BASE_PATH}/projects`, authMiddleware(authService), projectRoutes(projectStore, flowStore, organizationStore));
-  app.use(`${API_BASE_PATH}/organizations`, authMiddleware(authService), organizationRoutes(organizationStore));
+  // Protected routes (auth required - supports both JWT and API tokens)
+  const auth = combinedAuth(authService, apiTokenService);
+  app.use(`${API_BASE_PATH}/flows`, auth, flowRoutes(flowStore, projectStore, organizationStore));
+  app.use(`${API_BASE_PATH}/runs`, auth, runRoutes(testRunner, flowStore, projectStore, runStore));
+  app.use(`${API_BASE_PATH}/environments`, auth, environmentRoutes(environmentStore));
+  app.use(`${API_BASE_PATH}/projects`, auth, projectRoutes(projectStore, flowStore, organizationStore));
+  app.use(`${API_BASE_PATH}/organizations`, auth, organizationRoutes(organizationStore));
+  app.use(`${API_BASE_PATH}/api-tokens`, authMiddleware(authService), apiTokenRoutes(apiTokenService));
 
   // Proxy endpoint for external API requests (CORS workaround)
   app.get(`${API_BASE_PATH}/proxy`, async (req, res) => {

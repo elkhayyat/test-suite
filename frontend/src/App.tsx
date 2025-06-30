@@ -10,6 +10,7 @@ import TestRunDetails from './pages/TestRunDetails';
 import Environments from './pages/Environments';
 import Projects from './pages/Projects';
 import Organizations from './pages/Organizations';
+import ApiTokens from './pages/ApiTokens';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { EnvironmentProvider } from './contexts/EnvironmentContext';
@@ -271,6 +272,13 @@ function App() {
                       <ProtectedRoute requiredRole={['admin']}>
                         <ErrorBoundary>
                           <Organizations />
+                        </ErrorBoundary>
+                      </ProtectedRoute>
+                    } />
+                    <Route path="/api-tokens" element={
+                      <ProtectedRoute>
+                        <ErrorBoundary>
+                          <ApiTokens />
                         </ErrorBoundary>
                       </ProtectedRoute>
                     } />

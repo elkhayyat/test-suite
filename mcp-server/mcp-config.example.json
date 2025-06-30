@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "test-flow-suite": {
+      "command": "node",
+      "args": ["./mcp-server/dist/index.js"],
+      "env": {
+        "TEST_FLOW_API_URL": "http://localhost:3001",
+        "TEST_FLOW_AUTH_TOKEN": "your-auth-token-here"
+      }
+    }
+  }
+}

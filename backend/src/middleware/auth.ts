@@ -46,6 +46,8 @@ export const requireRole = (allowedRoles: string[]) => {
   };
 };
 
+export const authenticateToken = authMiddleware;
+
 export const optionalAuth = (authService: AuthService) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     try {

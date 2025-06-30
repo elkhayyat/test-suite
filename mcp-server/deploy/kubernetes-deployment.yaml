@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-flow-mcp-server
+  labels:
+    app: test-flow-mcp-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-flow-mcp-server
+  template:
+    metadata:
+      labels:
+        app: test-flow-mcp-server
+    spec:
+      containers:
+      - name: mcp-server
+        image: YOUR_REGISTRY/test-flow-mcp-server:latest
+        ports:
+        - containerPort: 3002
+        env:
+        - name: PORT
+          value: "3002"
+        - name: NODE_ENV
+          value: "production"
+        - name: TEST_FLOW_API_URL
+          valueFrom:
+            secretKeyRef:
+              name: test-flow-secrets
+              key: api-url
+        - name: TEST_FLOW_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: test-flow-secrets
+              key: auth-token
+        - name: MCP_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: test-flow-secrets
+              key: mcp-auth-token
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3002
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3002
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-flow-mcp-server
+spec:
+  selector:
+    app: test-flow-mcp-server
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3002
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-flow-secrets
+type: Opaque
+stringData:
+  api-url: "https://your-test-flow-api.com"
+  auth-token: "your-test-flow-auth-token"
+  mcp-auth-token: "your-mcp-auth-token"

@@ -1,0 +1,54 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: test-flow-mcp-server
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "100"
+    spec:
+      containers:
+      - image: gcr.io/YOUR_PROJECT_ID/test-flow-mcp-server:latest
+        ports:
+        - containerPort: 3002
+        env:
+        - name: PORT
+          value: "3002"
+        - name: NODE_ENV
+          value: "production"
+        - name: TEST_FLOW_API_URL
+          valueFrom:
+            secretKeyRef:
+              name: test-flow-api-url
+              key: latest
+        - name: TEST_FLOW_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: test-flow-auth-token
+              key: latest
+        - name: MCP_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: mcp-auth-token
+              key: latest
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3002
+          initialDelaySeconds: 5
+          periodSeconds: 30
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 3002
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          failureThreshold: 10

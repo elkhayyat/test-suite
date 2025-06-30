@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "test-flow-suite-local": {
+      "comment": "Local development with stdio transport",
+      "command": "node",
+      "args": ["/path/to/test-flow-suite/mcp-server/dist/index.js"],
+      "env": {
+        "TEST_FLOW_API_URL": "http://localhost:3001",
+        "TEST_FLOW_AUTH_TOKEN": "your-test-flow-api-token",
+        "MCP_AUTH_TOKEN": "not-used-in-stdio-mode"
+      }
+    },
+    "test-flow-suite-cloud": {
+      "comment": "Cloud deployment with HTTP transport",
+      "command": "curl",
+      "args": [
+        "-X", "POST",
+        "-H", "Authorization: Bearer YOUR_MCP_AUTH_TOKEN_HERE",
+        "-H", "Content-Type: application/json",
+        "--no-buffer",
+        "--silent",
+        "--show-error",
+        "https://your-mcp-server.com/mcp"
+      ]
+    }
+  }
+}
