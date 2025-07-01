@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Button,
-  Card,
-  CardContent,
   Dialog,
   DialogActions,
   DialogContent,
@@ -39,15 +37,12 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
   Key as KeyIcon,
-  Info as InfoIcon,
 } from '@mui/icons-material';
-import { format } from 'date-fns';
 import { api } from '../services/api';
 import { ApiToken } from '../../../shared/src/types';
 
 export default function ApiTokens() {
   const [tokens, setTokens] = useState<ApiToken[]>([]);
-  const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newTokenDialog, setNewTokenDialog] = useState<{
     open: boolean;
@@ -80,7 +75,7 @@ export default function ApiTokens() {
       console.error('Error fetching tokens:', error);
       showSnackbar('Failed to fetch API tokens', 'error');
     } finally {
-      setLoading(false);
+      // Loading complete
     }
   };
 
@@ -190,7 +185,7 @@ export default function ApiTokens() {
                     {token.token !== '***' && (
                       <IconButton
                         size="small"
-                        onClick={() => copyToClipboard(token.token)}
+                        onClick={() => copyToClipboard(token.token || '')}
                       >
                         <CopyIcon />
                       </IconButton>
@@ -206,12 +201,12 @@ export default function ApiTokens() {
                 </TableCell>
                 <TableCell>
                   {token.lastUsedAt
-                    ? format(new Date(token.lastUsedAt), 'PPp')
+                    ? new Date(token.lastUsedAt).toLocaleString()
                     : 'Never'}
                 </TableCell>
                 <TableCell>
                   {token.expiresAt
-                    ? format(new Date(token.expiresAt), 'PP')
+                    ? new Date(token.expiresAt).toLocaleDateString()
                     : 'Never'}
                 </TableCell>
                 <TableCell>
