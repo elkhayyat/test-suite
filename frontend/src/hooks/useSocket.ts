@@ -5,7 +5,9 @@ export function useSocket() {
   const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
-    const newSocket = io('http://localhost:3001');
+    // Use environment variable for WebSocket URL, fallback to current host
+    const socketUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || '';
+    const newSocket = io(socketUrl);
     setSocket(newSocket);
 
     return () => {
