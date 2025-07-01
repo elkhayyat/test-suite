@@ -4,6 +4,12 @@ import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, O
 // Ensure API_BASE_URL doesn't have trailing slash
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
+// Production environment check
+if (import.meta.env.MODE === 'production' && (!import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE_URL === '/api')) {
+  console.error('[API] WARNING: VITE_API_BASE_URL not set in production! API calls will fail.');
+  console.error('[API] Current value:', import.meta.env.VITE_API_BASE_URL);
+}
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -16,7 +22,12 @@ const apiClient = axios.create({
 // Add request interceptor for debugging
 apiClient.interceptors.request.use(
   (config) => {
-    console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
+    const fullUrl = axios.getUri(config);
+    console.log(`[API] ${config.method?.toUpperCase()} ${fullUrl}`, {
+      baseURL: config.baseURL,
+      url: config.url,
+      VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL
+    });
     return config;
   },
   (error) => {
