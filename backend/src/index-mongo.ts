@@ -70,7 +70,7 @@ async function startServer() {
   app.use(`${API_BASE_PATH}/environments`, auth, environmentRoutes(environmentStore));
   app.use(`${API_BASE_PATH}/projects`, auth, projectRoutes(projectStore, flowStore, organizationStore));
   app.use(`${API_BASE_PATH}/organizations`, auth, organizationRoutes(organizationStore));
-  app.use(`${API_BASE_PATH}/api-tokens`, authMiddleware(authService), apiTokenRoutes(apiTokenService));
+  app.use(`${API_BASE_PATH}/api-tokens`, auth, apiTokenRoutes(apiTokenService));
 
   // Proxy endpoint for external API requests (CORS workaround)
   app.get(`${API_BASE_PATH}/proxy`, async (req, res) => {

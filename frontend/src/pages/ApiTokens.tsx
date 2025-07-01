@@ -43,17 +43,7 @@ import {
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { api } from '../services/api';
-
-interface ApiToken {
-  id: string;
-  name: string;
-  token: string;
-  permissions: string[];
-  lastUsedAt?: string;
-  expiresAt?: string;
-  createdAt: string;
-  isActive: boolean;
-}
+import { ApiToken } from '../../../shared/src/types';
 
 export default function ApiTokens() {
   const [tokens, setTokens] = useState<ApiToken[]>([]);
@@ -84,8 +74,8 @@ export default function ApiTokens() {
 
   const fetchTokens = async () => {
     try {
-      const response = await api.get('/api-tokens');
-      setTokens(response.data);
+      const tokensData = await api.getApiTokens();
+      setTokens(tokensData);
     } catch (error) {
       console.error('Error fetching tokens:', error);
       showSnackbar('Failed to fetch API tokens', 'error');
@@ -96,8 +86,8 @@ export default function ApiTokens() {
 
   const createToken = async () => {
     try {
-      const response = await api.post('/api-tokens', tokenForm);
-      setNewTokenDialog({ open: true, token: response.data.token });
+      const response = await api.createApiToken(tokenForm);
+      setNewTokenDialog({ open: true, token: response.token });
       setCreateDialogOpen(false);
       setTokenForm({ name: '', permissions: ['read', 'write', 'execute'], expiresInDays: 90 });
       fetchTokens();
@@ -109,7 +99,7 @@ export default function ApiTokens() {
 
   const revokeToken = async (tokenId: string) => {
     try {
-      await api.put(`/api-tokens/${tokenId}/revoke`);
+      await api.revokeApiToken(tokenId);
       showSnackbar('Token revoked successfully', 'success');
       fetchTokens();
     } catch (error) {
@@ -120,7 +110,7 @@ export default function ApiTokens() {
 
   const deleteToken = async (tokenId: string) => {
     try {
-      await api.delete(`/api-tokens/${tokenId}`);
+      await api.deleteApiToken(tokenId);
       showSnackbar('Token deleted successfully', 'success');
       setDeleteDialogOpen(null);
       fetchTokens();
@@ -353,7 +343,12 @@ export default function ApiTokens() {
             Save this token securely! It will not be shown again.
           </Alert>
           
-          <Paper sx={{ p: 2, bgcolor: 'grey.100' }}>
+          <Paper sx={{ 
+            p: 2, 
+            bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.100',
+            border: (theme) => theme.palette.mode === 'dark' ? '1px solid' : 'none',
+            borderColor: 'grey.700'
+          }}>
             <Typography variant="body1" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
               {newTokenDialog.token}
             </Typography>
@@ -379,8 +374,18 @@ export default function ApiTokens() {
           <Typography variant="body2" gutterBottom>
             Add this to your Claude Desktop configuration file:
           </Typography>
-          <Paper sx={{ p: 2, bgcolor: 'grey.100', mt: 1 }}>
-            <pre style={{ margin: 0, overflow: 'auto' }}>
+          <Paper sx={{ 
+            p: 2, 
+            bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.100',
+            border: (theme) => theme.palette.mode === 'dark' ? '1px solid' : 'none',
+            borderColor: 'grey.700',
+            mt: 1 
+          }}>
+            <pre style={{ 
+              margin: 0, 
+              overflow: 'auto',
+              color: 'inherit' 
+            }}>
 {`{
   "mcpServers": {
     "test-flow-suite": {

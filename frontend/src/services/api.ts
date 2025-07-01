@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, Organization, Team, TeamUser, TeamUserWithDetails, ProjectTeam, ProjectOpenAPISchema } from '../../../shared/src/types';
+import { TestFlow, TestRun, Environment, EnvironmentVariable, Project, Folder, Organization, Team, TeamUser, TeamUserWithDetails, ProjectTeam, ProjectOpenAPISchema, ApiToken } from '../../../shared/src/types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -9,7 +9,41 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true, // Send cookies with requests
+  timeout: 30000, // 30 second timeout
 });
+
+// Add request interceptor for debugging
+apiClient.interceptors.request.use(
+  (config) => {
+    console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
+    return config;
+  },
+  (error) => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for better error handling
+apiClient.interceptors.response.use(
+  (response) => {
+    console.log(`Response ${response.status} from ${response.config.url}`);
+    return response;
+  },
+  (error) => {
+    console.error('Response error:', error.message, error.config?.url);
+    if (error.code === 'ECONNABORTED') {
+      console.error('Request timeout:', error.message);
+    } else if (error.response?.status === 401) {
+      // Handle authentication errors
+      console.error('Authentication error:', error.response.data);
+      // Could redirect to login here
+    } else if (error.request) {
+      console.error('Network error:', error.message);
+    }
+    return Promise.reject(error);
+  }
+);
 console.log('VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
 console.log('API_BASE_URL:', API_BASE_URL);
 export const api = {
@@ -314,5 +348,24 @@ export const api = {
 
   async removeTeamFromProject(projectId: string, teamId: string): Promise<void> {
     await apiClient.delete(`/projects/${projectId}/teams/${teamId}`);
+  },
+
+  // API Tokens
+  async getApiTokens(): Promise<ApiToken[]> {
+    const response = await apiClient.get('/api-tokens');
+    return response.data;
+  },
+
+  async createApiToken(tokenData: Partial<ApiToken>): Promise<ApiToken> {
+    const response = await apiClient.post('/api-tokens', tokenData);
+    return response.data;
+  },
+
+  async revokeApiToken(tokenId: string): Promise<void> {
+    await apiClient.put(`/api-tokens/${tokenId}/revoke`);
+  },
+
+  async deleteApiToken(tokenId: string): Promise<void> {
+    await apiClient.delete(`/api-tokens/${tokenId}`);
   },
 };
