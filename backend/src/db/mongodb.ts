@@ -25,6 +25,12 @@ export class MongoDB {
   constructor() {
     // Use auth connection string for production, simple connection for development
     const mongoUrl = process.env.MONGODB_URL || 'mongodb://app_user:app_password@localhost:27017/test-flow-suite';
+    console.log('MongoDB URL:', mongoUrl);
+    console.log('Environment variables:', {
+      MONGODB_URL: process.env.MONGODB_URL,
+      MONGODB_DB_NAME: process.env.MONGODB_DB_NAME,
+      NODE_ENV: process.env.NODE_ENV
+    });
     
     this.client = new MongoClient(mongoUrl);
     
