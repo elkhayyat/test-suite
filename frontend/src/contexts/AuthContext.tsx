@@ -34,10 +34,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const refreshAuth = async () => {
     try {
+      console.log('Checking authentication status...');
       const response = await authApi.getCurrentUser();
+      console.log('Authentication successful:', response.user);
       setUser(response.user);
       setOrganization(response.organization || null);
     } catch (error) {
+      console.log('Not authenticated:', error);
       // Not authenticated
       setUser(null);
       setOrganization(null);

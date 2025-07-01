@@ -15,7 +15,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { user, isLoading } = useAuth();
   const location = useLocation();
 
+  console.log('ProtectedRoute:', { user: !!user, isLoading, location: location.pathname });
+
   if (isLoading) {
+    console.log('ProtectedRoute: Still loading auth state');
     return (
       <Box 
         display="flex" 
@@ -29,6 +32,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (!user) {
+    console.log('ProtectedRoute: No user, redirecting to login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

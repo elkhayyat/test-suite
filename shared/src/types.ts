@@ -272,6 +272,21 @@ export interface InvitationResponse {
   createdAt: Date;
 }
 
+export interface ApiToken {
+  id: string;
+  userId: string;
+  organizationId: string;
+  name: string;
+  token?: string; // Only returned when creating
+  tokenHash: string;
+  permissions: string[];
+  lastUsedAt?: Date;
+  expiresAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  isActive: boolean;
+}
+
 export interface ProjectUser {
   id: string;
   projectId: string;

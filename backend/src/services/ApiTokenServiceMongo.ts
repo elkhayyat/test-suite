@@ -26,9 +26,14 @@ export class ApiTokenServiceMongo {
     permissions: string[] = ['read', 'write', 'execute'],
     expiresInDays?: number
   ): Promise<{ token: ApiToken; plainToken: string }> {
+    console.log('Generating API token for user:', userId);
+    
     // Generate a secure random token
     const plainToken = this.generateSecureToken();
-    const tokenHash = await bcrypt.hash(plainToken, 10);
+    console.log('Generated plain token, now hashing...');
+    
+    const tokenHash = await bcrypt.hash(plainToken, 8); // Reduced from 10 to 8 for faster generation
+    console.log('Token hashed successfully');
 
     const token: ApiToken = {
       id: uuidv4(),
@@ -50,10 +55,12 @@ export class ApiTokenServiceMongo {
     }
 
     // Store in database
+    console.log('Storing token in database...');
     await this.collection.insertOne({
       _id: token.id,
       ...token
     });
+    console.log('Token stored successfully');
 
     return { token, plainToken: token.token };
   }

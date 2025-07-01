@@ -1,23 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { ApiTokenService } from '../services/ApiTokenService';
-import { authenticateToken } from '../middleware/auth';
-
-interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    organizationId: string;
-  };
-}
+import { CombinedAuthRequest } from '../middleware/combinedAuth';
 
 export function apiTokenRoutes(apiTokenService: ApiTokenService): Router {
   const router = Router();
 
-  // All routes require authentication
-  router.use(authenticateToken);
+  // Authentication is handled by the main router middleware
 
   // Get all tokens for the current user
-  router.get('/', async (req: AuthRequest, res: Response) => {
+  router.get('/', async (req: CombinedAuthRequest, res: Response) => {
     try {
       const tokens = await apiTokenService.getUserTokens(req.user!.id);
       res.json(tokens);
@@ -41,14 +33,19 @@ export function apiTokenRoutes(apiTokenService: ApiTokenService): Router {
         .isInt({ min: 1, max: 365 })
         .withMessage('Expiration must be between 1 and 365 days'),
     ],
-    async (req: AuthRequest, res: Response) => {
+    async (req: CombinedAuthRequest, res: Response) => {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ errors: errors.array() });
       }
 
       try {
+        console.log('API token creation request received:', req.body);
+        console.log('User:', req.user);
+        
         const { name, permissions, expiresInDays } = req.body;
+        console.log('Starting token generation...');
+        
         const { token, plainToken } = await apiTokenService.generateToken(
           req.user!.id,
           req.user!.organizationId,
@@ -56,6 +53,8 @@ export function apiTokenRoutes(apiTokenService: ApiTokenService): Router {
           permissions || ['read', 'write', 'execute'],
           expiresInDays
         );
+        
+        console.log('Token generation completed');
 
         // Return the token only once, user must save it
         res.json({
@@ -71,7 +70,7 @@ export function apiTokenRoutes(apiTokenService: ApiTokenService): Router {
   );
 
   // Revoke a token (soft delete)
-  router.put('/:tokenId/revoke', async (req: AuthRequest, res: Response) => {
+  router.put('/:tokenId/revoke', async (req: CombinedAuthRequest, res: Response) => {
     try {
       const success = await apiTokenService.revokeToken(
         req.params.tokenId,
@@ -90,7 +89,7 @@ export function apiTokenRoutes(apiTokenService: ApiTokenService): Router {
   });
 
   // Delete a token (hard delete)
-  router.delete('/:tokenId', async (req: AuthRequest, res: Response) => {
+  router.delete('/:tokenId', async (req: CombinedAuthRequest, res: Response) => {
     try {
       const success = await apiTokenService.deleteToken(
         req.params.tokenId,
