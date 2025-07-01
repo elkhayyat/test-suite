@@ -37,6 +37,25 @@ const openApiGenerator = new OpenAPIFlowGenerator(apiClient);
 const flowRunner = new FlowRunner(apiClient);
 const testAnalyzer = new TestAnalyzer();
 
+// Helper function to resolve project name to ID
+async function resolveProjectId(projectIdOrName: string): Promise<string> {
+  // If it's already a UUID, return it
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(projectIdOrName)) {
+    return projectIdOrName;
+  }
+  
+  // Otherwise, treat it as a name and look it up
+  const projects = await apiClient.getProjects();
+  const project = projects.find(p => p.name === projectIdOrName);
+  
+  if (!project) {
+    throw new Error(`Project not found: ${projectIdOrName}`);
+  }
+  
+  return project.id;
+}
+
 // Tool: Create flows from OpenAPI schema
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
@@ -206,6 +225,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
         },
       },
+      {
+        name: 'list_projects',
+        description: 'List all available projects',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
     ],
   };
 });
@@ -218,7 +245,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case 'create_flows_from_openapi': {
         if (!args) throw new Error('Arguments required');
-        const result = await openApiGenerator.generateFlows(args as any);
+        const argsWithResolvedProject = {
+          ...(args as any),
+          projectId: await resolveProjectId((args as any).projectId)
+        };
+        const result = await openApiGenerator.generateFlows(argsWithResolvedProject);
         return {
           content: [
             {
@@ -265,7 +296,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'run_project': {
         if (!args) throw new Error('Arguments required');
-        const results = await flowRunner.runProject((args as any).projectId, {
+        const projectId = await resolveProjectId((args as any).projectId);
+        const results = await flowRunner.runProject(projectId, {
           environmentId: (args as any).environmentId,
           parallel: (args as any).parallel,
         });
@@ -297,7 +329,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'get_recent_test_runs': {
-        const runs = await apiClient.getTestRuns(args as any);
+        let filters = args as any;
+        if (filters?.projectId) {
+          filters = {
+            ...filters,
+            projectId: await resolveProjectId(filters.projectId)
+          };
+        }
+        const runs = await apiClient.getTestRuns(filters);
         const summary = runs.map(run => 
           `${run.flowName} (${run.id}): ${run.status} - ${new Date(run.startTime).toLocaleString()}`
         ).join('\n');
@@ -306,6 +345,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: 'text',
               text: `Recent test runs:\n${summary}`,
+            },
+          ],
+        };
+      }
+
+      case 'list_projects': {
+        const projects = await apiClient.getProjects();
+        const summary = projects.map(project => 
+          `${project.name} (${project.id}): ${project.description || 'No description'}`
+        ).join('\n');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Available projects:\n${summary}`,
             },
           ],
         };

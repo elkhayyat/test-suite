@@ -1,13 +1,1 @@
-{
-    "mcpServers": {
-      "test-flow-suite": {
-        "command": "node",
-        "args":
-  ["/Users/elkhayyat/CascadeProjects/endpoint-test-suite/test-flow-suite/mcp-server/dist/index.js"],
-        "env": {
-          "TEST_FLOW_API_URL": "http://localhost:3001",
-          "TEST_FLOW_AUTH_TOKEN": "965788b27f4bb79194605477b6aac2f7af5a003ab220fab714703454e840465d"
-        }
-      }
-    }
-  }
+{}
