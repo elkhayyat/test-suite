@@ -48,10 +48,40 @@ async function startServer() {
     }
   });
 
-  app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true
-  }));
+  // Configure CORS
+  const corsOptions = {
+    origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      const allowedOrigins = [
+        process.env.FRONTEND_URL || 'http://localhost:3000',
+        'http://localhost:3000',
+        'http://localhost:3001'
+      ];
+      
+      // In production, also allow Cloudflare Pages domains
+      if (process.env.NODE_ENV === 'production' && process.env.ALLOWED_ORIGINS) {
+        allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(','));
+      }
+      
+      if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.pages.dev')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+    exposedHeaders: ['Set-Cookie']
+  };
+
+  app.use(cors(corsOptions));
+  
+  // Handle preflight requests
+  app.options('*', cors(corsOptions));
+  
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
   app.use(cookieParser());
@@ -59,6 +89,25 @@ async function startServer() {
   const testRunner = new TestRunner(io, flowStore, environmentStore, runStore);
 
   const API_BASE_PATH = process.env.API_BASE_PATH || '/api';
+
+  // Health check endpoints
+  app.get('/', (req, res) => {
+    res.json({ 
+      message: 'Test Flow Suite API',
+      status: 'running',
+      version: '1.0.0',
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  app.get('/health', (req, res) => {
+    res.json({ 
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || 'development'
+    });
+  });
 
   // Auth routes (no auth required)
   app.use(`${API_BASE_PATH}/auth`, authRoutes(authService, userStore, organizationStore));
