@@ -1,12 +1,40 @@
 import axios from 'axios';
 import { LoginRequest, RegisterRequest, AuthResponse, InvitationRequest, InvitationResponse } from '../../../shared/src/types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// Ensure API_BASE_URL doesn't have trailing slash
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+
+// Debug logging for production
+if (import.meta.env.MODE === 'production') {
+  console.log('[AuthAPI] Environment:', {
+    VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
+    API_BASE_URL,
+    authBaseURL: `${API_BASE_URL}/auth`,
+    mode: import.meta.env.MODE
+  });
+}
 
 const authApi = axios.create({
   baseURL: `${API_BASE_URL}/auth`,
   withCredentials: true, // Send cookies with requests
 });
+
+// Add request interceptor for debugging
+authApi.interceptors.request.use(
+  (config) => {
+    console.log('[AuthAPI] Request:', {
+      method: config.method,
+      url: config.url,
+      baseURL: config.baseURL,
+      fullURL: axios.getUri(config)
+    });
+    return config;
+  },
+  (error) => {
+    console.error('[AuthAPI] Request error:', error);
+    return Promise.reject(error);
+  }
+);
 
 export const authApiService = {
   async register(data: RegisterRequest): Promise<AuthResponse> {
