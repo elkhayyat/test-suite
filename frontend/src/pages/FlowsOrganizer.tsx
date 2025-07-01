@@ -39,21 +39,31 @@ export default function FlowsOrganizer() {
     try {
       // Load flows
       const flowsData = await api.getFlows();
-      setFlows(flowsData);
+      setFlows(Array.isArray(flowsData) ? flowsData : []);
 
       // Load projects
       const projectsData = await api.getProjects();
-      setProjects(projectsData);
+      const projects = Array.isArray(projectsData) ? projectsData : [];
+      setProjects(projects);
 
       // Load folders for each project
       const foldersData: { [projectId: string]: Folder[] } = {};
-      for (const project of projectsData) {
-        const projectFolders = await api.getProjectFolders(project.id);
-        foldersData[project.id] = projectFolders;
+      for (const project of projects) {
+        try {
+          const projectFolders = await api.getProjectFolders(project.id);
+          foldersData[project.id] = Array.isArray(projectFolders) ? projectFolders : [];
+        } catch (error) {
+          console.error(`Failed to load folders for project ${project.id}:`, error);
+          foldersData[project.id] = [];
+        }
       }
       setFolders(foldersData);
     } catch (error) {
       console.error('Failed to load data:', error);
+      // Set empty arrays on error to prevent UI crashes
+      setFlows([]);
+      setProjects([]);
+      setFolders({});
     }
   };
 

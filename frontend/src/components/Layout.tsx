@@ -62,14 +62,22 @@ export default function Layout() {
         api.getFlows(),
         api.getProjects()
       ]);
-      setFlows(flowsData || []);
-      setProjects(projectsData || []);
+      
+      // Ensure flowsData is an array
+      const flows = Array.isArray(flowsData) ? flowsData : [];
+      setFlows(flows);
+      
+      // Ensure projectsData is an array
+      const projects = Array.isArray(projectsData) ? projectsData : [];
+      setProjects(projects);
       
       // Load folders for all projects in parallel
-      const folderPromises = (projectsData || []).map(async (project) => {
+      const folderPromises = projects.map(async (project) => {
         try {
           const projectFolders = await api.getProjectFolders(project.id);
-          return { projectId: project.id, folders: projectFolders || [] };
+          // Ensure projectFolders is an array
+          const folders = Array.isArray(projectFolders) ? projectFolders : [];
+          return { projectId: project.id, folders };
         } catch (error) {
           console.error(`Failed to load folders for project ${project.id}:`, error);
           return { projectId: project.id, folders: [] };
@@ -85,6 +93,10 @@ export default function Layout() {
       setFolders(foldersMap);
     } catch (error) {
       console.error('Failed to load data for explorer:', error);
+      // Set empty arrays on error to prevent UI crashes
+      setFlows([]);
+      setProjects([]);
+      setFolders({});
     }
   };
 
@@ -126,7 +138,7 @@ export default function Layout() {
       await api.updateFlow(flowId, { projectId: newProjectId, folderId: newFolderId });
       // Reload flows to reflect changes
       const flowsData = await api.getFlows();
-      setFlows(flowsData || []);
+      setFlows(Array.isArray(flowsData) ? flowsData : []);
     } catch (error) {
       console.error('Failed to move flow:', error);
     }
@@ -149,7 +161,7 @@ export default function Layout() {
       await api.createFlow(duplicatedFlow);
       // Reload flows to reflect changes
       const flowsData = await api.getFlows();
-      setFlows(flowsData || []);
+      setFlows(Array.isArray(flowsData) ? flowsData : []);
     } catch (error) {
       console.error('Failed to duplicate flow:', error);
     }
@@ -229,7 +241,7 @@ export default function Layout() {
       for (const project of projects) {
         try {
           const projectFolders = await api.getProjectFolders(project.id);
-          updatedFolders[project.id] = projectFolders || [];
+          updatedFolders[project.id] = Array.isArray(projectFolders) ? projectFolders : [];
         } catch (error) {
           console.error(`Failed to load folders for project ${project.id}:`, error);
           updatedFolders[project.id] = [];
@@ -254,7 +266,7 @@ export default function Layout() {
         for (const project of projects) {
           try {
             const projectFolders = await api.getProjectFolders(project.id);
-            updatedFolders[project.id] = projectFolders || [];
+            updatedFolders[project.id] = Array.isArray(projectFolders) ? projectFolders : [];
           } catch (error) {
             console.error(`Failed to load folders for project ${project.id}:`, error);
             updatedFolders[project.id] = [];
@@ -300,7 +312,7 @@ export default function Layout() {
       // Reload flows
       try {
         const flowsData = await api.getFlows();
-        setFlows(flowsData || []);
+        setFlows(Array.isArray(flowsData) ? flowsData : []);
         alert(`Imported ${files.length} flows into folder`);
       } catch (error) {
         console.error('Failed to reload flows:', error);
@@ -355,7 +367,7 @@ export default function Layout() {
       
       // Reload folders
       const projectFolders = await api.getProjectFolders(projectId);
-      setFolders(prev => ({ ...prev, [projectId]: projectFolders || [] }));
+      setFolders(prev => ({ ...prev, [projectId]: Array.isArray(projectFolders) ? projectFolders : [] }));
       
       alert(`Folder "${folderName}" created successfully`);
     } catch (error) {
@@ -406,7 +418,7 @@ export default function Layout() {
       
       // Reload projects
       const projectsData = await api.getProjects();
-      setProjects(projectsData || []);
+      setProjects(Array.isArray(projectsData) ? projectsData : []);
       
       alert(`Project "${duplicatedProject.name}" created successfully`);
     } catch (error) {
@@ -506,8 +518,8 @@ export default function Layout() {
           api.getFlows(),
           api.getProjectFolders(projectId)
         ]);
-        setFlows(flowsData || []);
-        setFolders(prev => ({ ...prev, [projectId]: projectFolders || [] }));
+        setFlows(Array.isArray(flowsData) ? flowsData : []);
+        setFolders(prev => ({ ...prev, [projectId]: Array.isArray(projectFolders) ? projectFolders : [] }));
         alert(`Imported ${importedCount} flows into project`);
       } catch (error) {
         console.error('Failed to reload data:', error);
