@@ -1,12 +1,14 @@
 import { v4 as uuidv4 } from 'uuid';
 import { TestFlow, IFlowStore } from '../../../shared/src/types';
 import { sampleFlows } from './SampleFlows';
-import { getDatabase } from '../db/database';
+import { MongoDB } from '../db/mongodb';
 
 export class FlowStore implements IFlowStore {
+  private mongodb: MongoDB;
   public flows: Map<string, TestFlow> = new Map();
 
-  constructor() {
+  constructor(mongodb: MongoDB) {
+    this.mongodb = mongodb;
     this.initialize();
   }
 
@@ -15,59 +17,79 @@ export class FlowStore implements IFlowStore {
       // Load flows from database
       await this.loadFlowsFromDatabase();
       
+      const collections = this.mongodb.getCollections();
+      
+      // Check if we have any flows
+      const flowCount = await collections.flows.countDocuments();
+      
       // If no flows exist, load sample flows
-      if (this.flows.size === 0) {
+      if (flowCount === 0) {
         for (const flow of sampleFlows) {
           await this.createFlow(flow);
         }
       }
     } catch (error) {
       console.error('Failed to initialize flow store:', error);
-      // Fallback to sample flows
-      sampleFlows.forEach(flow => {
-        this.flows.set(flow.id, flow);
-      });
     }
   }
 
   async loadFlowsFromDatabase(): Promise<void> {
     try {
-      const db = await getDatabase();
-      const rows = await db.all('SELECT * FROM flows');
-      
-      rows.forEach(row => {
-        const flow: TestFlow = {
-          id: row.id,
-          projectId: row.project_id,
-          folderId: row.folder_id,
-          name: row.name,
-          description: row.description,
-          steps: JSON.parse(row.nodes),
-          connections: JSON.parse(row.edges),
-          createdAt: new Date(row.created_at),
-          updatedAt: new Date(row.updated_at),
-        };
+      const collections = this.mongodb.getCollections();
+      const flows = await collections.flows.find({}).toArray();
+      this.flows.clear();
+      flows.forEach(flow => {
         this.flows.set(flow.id, flow);
       });
+      console.log(`Loaded ${flows.length} flows from database`);
     } catch (error) {
       console.error('Failed to load flows from database:', error);
     }
   }
 
-  getAllFlows(): TestFlow[] {
-    return Array.from(this.flows.values());
+  async getAllFlows(): Promise<TestFlow[]> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const flows = await collections.flows.find({}).toArray();
+      console.log(`Retrieved ${flows.length} flows from database`);
+      return flows;
+    } catch (error) {
+      console.error('Failed to get all flows:', error);
+      return [];
+    }
   }
 
-  getFlowsByProject(projectId: string): TestFlow[] {
-    return Array.from(this.flows.values()).filter(flow => flow.projectId === projectId);
+  async getFlowsByProject(projectId: string): Promise<TestFlow[]> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const flows = await collections.flows.find({ projectId }).toArray();
+      return flows;
+    } catch (error) {
+      console.error('Failed to get flows by project:', error);
+      return [];
+    }
   }
 
-  getFlowsByFolder(folderId: string): TestFlow[] {
-    return Array.from(this.flows.values()).filter(flow => flow.folderId === folderId);
+  async getFlowsByFolder(folderId: string): Promise<TestFlow[]> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const flows = await collections.flows.find({ folderId }).toArray();
+      return flows;
+    } catch (error) {
+      console.error('Failed to get flows by folder:', error);
+      return [];
+    }
   }
 
-  getFlow(id: string): TestFlow | undefined {
-    return this.flows.get(id);
+  async getFlow(id: string): Promise<TestFlow | undefined> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const flow = await collections.flows.findOne({ id });
+      return flow || undefined;
+    } catch (error) {
+      console.error('Failed to get flow:', error);
+      return undefined;
+    }
   }
 
   async createFlow(data: Partial<TestFlow>): Promise<TestFlow> {
@@ -83,74 +105,72 @@ export class FlowStore implements IFlowStore {
       updatedAt: data.updatedAt || new Date(),
     };
     
-    // Save to database
     try {
-      const db = await getDatabase();
-      await db.run(
-        `INSERT INTO flows (id, project_id, folder_id, name, description, nodes, edges, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        flow.id,
-        flow.projectId,
-        flow.folderId || null,
-        flow.name,
-        flow.description,
-        JSON.stringify(flow.steps),
-        JSON.stringify(flow.connections),
-        flow.createdAt.toISOString(),
-        flow.updatedAt.toISOString()
-      );
+      console.log('Creating flow:', { id: flow.id, name: flow.name, projectId: flow.projectId });
+      const collections = this.mongodb.getCollections();
+      await collections.flows.insertOne(flow);
+      console.log('Flow created successfully:', flow.id);
+      
+      // Verify the flow was saved
+      const savedFlow = await collections.flows.findOne({ id: flow.id });
+      if (!savedFlow) {
+        console.error('Flow was not saved properly!');
+        throw new Error('Flow was not saved properly');
+      }
     } catch (error) {
       console.error('Failed to save flow to database:', error);
+      throw error;
     }
     
-    this.flows.set(flow.id, flow);
     return flow;
   }
 
   async updateFlow(id: string, data: Partial<TestFlow>): Promise<TestFlow | undefined> {
-    const flow = this.flows.get(id);
-    if (!flow) return undefined;
-
-    const updatedFlow: TestFlow = {
-      ...flow,
-      ...data,
-      id,
-      updatedAt: new Date(),
-    };
-
-    // Update in database
     try {
-      const db = await getDatabase();
-      await db.run(
-        `UPDATE flows 
-         SET project_id = ?, folder_id = ?, name = ?, description = ?, nodes = ?, edges = ?, updated_at = ?
-         WHERE id = ?`,
-        updatedFlow.projectId,
-        updatedFlow.folderId || null,
-        updatedFlow.name,
-        updatedFlow.description,
-        JSON.stringify(updatedFlow.steps),
-        JSON.stringify(updatedFlow.connections),
-        updatedFlow.updatedAt.toISOString(),
-        id
+      const collections = this.mongodb.getCollections();
+      
+      // First check if the flow exists
+      const existingFlow = await collections.flows.findOne({ id });
+      if (!existingFlow) {
+        console.error(`Flow with id ${id} not found`);
+        return undefined;
+      }
+      
+      const updatedFlow = {
+        ...data,
+        updatedAt: new Date(),
+      };
+      
+      // Remove id from update data to avoid overwriting it
+      delete updatedFlow.id;
+      
+      console.log(`Updating flow ${id} with data:`, updatedFlow);
+      
+      const result = await collections.flows.findOneAndUpdate(
+        { id },
+        { $set: updatedFlow },
+        { returnDocument: 'after' }
       );
+      
+      if (!result) {
+        console.error(`Failed to update flow ${id} - no result returned`);
+      }
+      
+      return result || undefined;
     } catch (error) {
       console.error('Failed to update flow in database:', error);
+      return undefined;
     }
-
-    this.flows.set(id, updatedFlow);
-    return updatedFlow;
   }
 
   async deleteFlow(id: string): Promise<boolean> {
-    // Delete from database
     try {
-      const db = await getDatabase();
-      await db.run('DELETE FROM flows WHERE id = ?', id);
+      const collections = this.mongodb.getCollections();
+      const result = await collections.flows.deleteOne({ id });
+      return result.deletedCount > 0;
     } catch (error) {
       console.error('Failed to delete flow from database:', error);
+      return false;
     }
-    
-    return this.flows.delete(id);
   }
 }

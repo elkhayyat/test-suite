@@ -1,6 +1,6 @@
 # Test Flow Suite - Makefile
 
-.PHONY: help install dev dev-mongo dev-sqlite stop clean logs build start start-mongo docker-up docker-down docker-logs test test-frontend test-backend test-coverage
+.PHONY: help install dev stop clean logs build start docker-up docker-down docker-logs test test-frontend test-backend test-coverage
 
 # Default target
 help:
@@ -9,12 +9,8 @@ help:
 	@echo "  Setup & Installation:"
 	@echo "    make install          - Install all dependencies"
 	@echo ""
-	@echo "  Development (MongoDB):"
+	@echo "  Development:"
 	@echo "    make dev              - Start everything (MongoDB + Backend + Frontend)"
-	@echo "    make dev-mongo        - Same as 'make dev' (alias)"
-	@echo ""
-	@echo "  Development (SQLite):"
-	@echo "    make dev-sqlite       - Start with SQLite backend + Frontend"
 	@echo ""
 	@echo "  Docker & Database:"
 	@echo "    make docker-up        - Start MongoDB with Docker Compose"
@@ -23,8 +19,7 @@ help:
 	@echo ""
 	@echo "  Production:"
 	@echo "    make build            - Build all packages"
-	@echo "    make start            - Start production server (SQLite)"
-	@echo "    make start-mongo      - Start production server (MongoDB)"
+	@echo "    make start            - Start production server (MongoDB)"
 	@echo ""
 	@echo "  Testing:"
 	@echo "    make test             - Run all tests"
@@ -42,7 +37,7 @@ install:
 	@echo "Installing dependencies..."
 	npm install
 
-# Start everything with MongoDB (recommended)
+# Start everything with MongoDB
 dev: docker-up
 	@echo "Starting Test Flow Suite with MongoDB..."
 	@echo "MongoDB: http://localhost:8081 (admin/admin123)"
@@ -50,17 +45,6 @@ dev: docker-up
 	@echo "Backend: http://localhost:3001"
 	@echo ""
 	@sleep 3
-	npm run dev:mongo
-
-# Alias for dev
-dev-mongo: dev
-
-# Start with SQLite (fallback)
-dev-sqlite:
-	@echo "Starting Test Flow Suite with SQLite..."
-	@echo "Frontend: http://localhost:3000"
-	@echo "Backend: http://localhost:3001"
-	@echo ""
 	npm run dev
 
 # Docker commands
@@ -83,13 +67,9 @@ build:
 	@echo "Building all packages..."
 	npm run build
 
-start: build
-	@echo "Starting production server with SQLite..."
-	npm run start
-
-start-mongo: build docker-up
+start: build docker-up
 	@echo "Starting production server with MongoDB..."
-	npm run start:mongo
+	npm run start
 
 # Utility commands
 stop:

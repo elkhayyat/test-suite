@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ApiTokenService } from '../services/ApiTokenService';
+import { ApiTokenServiceMongo } from '../services/ApiTokenService';
 import { JWTPayload } from '../services/AuthService';
 
 export interface ApiTokenRequest extends Request {
@@ -10,7 +10,7 @@ export interface ApiTokenRequest extends Request {
   };
 }
 
-export const apiTokenAuth = (apiTokenService: ApiTokenService) => {
+export const apiTokenAuth = (apiTokenService: ApiTokenServiceMongo) => {
   return async (req: ApiTokenRequest, res: Response, next: NextFunction) => {
     try {
       const authHeader = req.headers.authorization;

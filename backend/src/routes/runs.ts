@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { TestRunner } from '../services/TestRunner';
 import { AuthRequest } from '../middleware/auth';
-import { FlowStore } from '../services/FlowStoreMongo';
-import { ProjectStore } from '../services/ProjectStoreMongo';
+import { FlowStore } from '../services/FlowStore';
+import { ProjectStore } from '../services/ProjectStore';
 import { TestRunStoreMongo } from '../services/TestRunStoreMongo';
 
 export const runRoutes = (testRunner: TestRunner, flowStore?: FlowStore, projectStore?: ProjectStore, runStore?: TestRunStoreMongo) => {

@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import { ApiTokenService } from '../services/ApiTokenService';
+import { ApiTokenServiceMongo } from '../services/ApiTokenService';
 import { CombinedAuthRequest } from '../middleware/combinedAuth';
 
-export function apiTokenRoutes(apiTokenService: ApiTokenService): Router {
+export function apiTokenRoutes(apiTokenService: ApiTokenServiceMongo): Router {
   const router = Router();
 
   // Authentication is handled by the main router middleware

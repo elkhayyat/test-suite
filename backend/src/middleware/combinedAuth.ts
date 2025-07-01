@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '../services/AuthService';
-import { ApiTokenService } from '../services/ApiTokenService';
+import { ApiTokenServiceMongo } from '../services/ApiTokenService';
 import { authConfig } from '../config/auth';
 
 export interface CombinedAuthRequest extends Request {
@@ -17,7 +17,7 @@ export interface CombinedAuthRequest extends Request {
   authType?: 'jwt' | 'apiToken';
 }
 
-export const combinedAuth = (authService: AuthService, apiTokenService: ApiTokenService) => {
+export const combinedAuth = (authService: AuthService, apiTokenService: ApiTokenServiceMongo) => {
   return async (req: CombinedAuthRequest, res: Response, next: NextFunction) => {
     try {
       // Check for Authorization header first

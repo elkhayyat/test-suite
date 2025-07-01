@@ -1,265 +1,257 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Project, Folder, ProjectOpenAPISchema, TestFlow, TestStep } from '../../../shared/src/types';
-import { getDatabase } from '../db/database';
+import { Project, Folder, FolderTree, ProjectOpenAPISchema, TestFlow, TestStep } from '../../../shared/src/types';
+import { MongoDB } from '../db/mongodb';
 import { parseOpenAPISchema, generateStepsFromOpenAPI } from '../../../shared/src/openApiParser';
 
 export class ProjectStore {
-  // Projects
-  async getProjects(): Promise<Project[]> {
-    const db = await getDatabase();
-    const rows = await db.all('SELECT * FROM projects ORDER BY name');
-    return rows.map(row => ({
-      ...row,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    }));
+  private mongodb: MongoDB;
+
+  constructor(mongodb: MongoDB) {
+    this.mongodb = mongodb;
   }
 
-  async getProject(id: string): Promise<Project | null> {
-    const db = await getDatabase();
-    const row = await db.get('SELECT * FROM projects WHERE id = ?', id);
-    if (!row) return null;
-    
-    return {
-      ...row,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    };
+  async getProjects(): Promise<Project[]> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const projects = await collections.projects.find({}).toArray();
+      return projects;
+    } catch (error) {
+      console.error('Failed to get projects:', error);
+      return [];
+    }
+  }
+
+  async getProject(id: string): Promise<Project | undefined> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const project = await collections.projects.findOne({ id });
+      return project || undefined;
+    } catch (error) {
+      console.error('Failed to get project:', error);
+      return undefined;
+    }
   }
 
   async createProject(data: Partial<Project>): Promise<Project> {
-    const db = await getDatabase();
-    const id = uuidv4();
-    const now = new Date();
-    
-    await db.run(
-      `INSERT INTO projects (id, name, description, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [id, data.name, data.description || null, now.toISOString(), now.toISOString()]
-    );
-    
-    return {
-      id,
-      organizationId: 'default',
-      name: data.name!,
+    const project: Project = {
+      id: data.id || uuidv4(),
+      organizationId: data.organizationId || 'default',
+      name: data.name || 'New Project',
       description: data.description,
-      createdAt: now,
-      updatedAt: now
+      createdAt: data.createdAt || new Date(),
+      updatedAt: data.updatedAt || new Date(),
     };
+
+    try {
+      const collections = this.mongodb.getCollections();
+      await collections.projects.insertOne(project);
+      return project;
+    } catch (error) {
+      console.error('Failed to create project:', error);
+      throw error;
+    }
   }
 
-  async updateProject(id: string, data: Partial<Project>): Promise<Project | null> {
-    const db = await getDatabase();
-    const existing = await this.getProject(id);
-    if (!existing) return null;
-    
-    const updatedData = {
-      name: data.name || existing.name,
-      description: data.description !== undefined ? data.description : existing.description,
-      updatedAt: new Date()
-    };
-    
-    await db.run(
-      `UPDATE projects 
-       SET name = ?, description = ?, updated_at = ?
-       WHERE id = ?`,
-      [updatedData.name, updatedData.description, updatedData.updatedAt.toISOString(), id]
-    );
-    
-    return {
-      ...existing,
-      ...updatedData
-    };
+  async updateProject(id: string, data: Partial<Project>): Promise<Project | undefined> {
+    try {
+      const collections = this.mongodb.getCollections();
+      
+      const updateData = {
+        ...data,
+        updatedAt: new Date(),
+      };
+      
+      // Remove id from update data
+      delete updateData.id;
+      
+      const result = await collections.projects.findOneAndUpdate(
+        { id },
+        { $set: updateData },
+        { returnDocument: 'after' }
+      );
+      
+      return result || undefined;
+    } catch (error) {
+      console.error('Failed to update project:', error);
+      return undefined;
+    }
   }
 
   async deleteProject(id: string): Promise<boolean> {
-    const db = await getDatabase();
-    // Don't delete the default project
-    const result = await db.run('DELETE FROM projects WHERE id = ? AND id != ?', [id, 'default']);
-    return (result.changes || 0) > 0;
+    try {
+      const collections = this.mongodb.getCollections();
+      
+      // Delete all folders in this project
+      await collections.folders.deleteMany({ projectId: id });
+      
+      // Delete all flows in this project
+      await collections.flows.deleteMany({ projectId: id });
+      
+      // Delete project users
+      await collections.projectUsers.deleteMany({ projectId: id });
+      
+      // Delete the project
+      const result = await collections.projects.deleteOne({ id });
+      return result.deletedCount > 0;
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      return false;
+    }
   }
 
-  // Folders
+  // Folder operations
   async getFolders(projectId: string): Promise<Folder[]> {
-    const db = await getDatabase();
-    const rows = await db.all(
-      'SELECT * FROM folders WHERE project_id = ? ORDER BY name',
-      projectId
-    );
-    return rows.map(row => ({
-      ...row,
-      projectId: row.project_id,
-      parentId: row.parent_id,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    }));
+    try {
+      const collections = this.mongodb.getCollections();
+      const folders = await collections.folders.find({ projectId }).toArray();
+      return folders;
+    } catch (error) {
+      console.error('Failed to get folders:', error);
+      return [];
+    }
   }
 
-  async getFolder(id: string): Promise<Folder | null> {
-    const db = await getDatabase();
-    const row = await db.get('SELECT * FROM folders WHERE id = ?', id);
-    if (!row) return null;
-    
-    return {
-      ...row,
-      projectId: row.project_id,
-      parentId: row.parent_id,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    };
+  async getFolder(id: string): Promise<Folder | undefined> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const folder = await collections.folders.findOne({ id });
+      return folder || undefined;
+    } catch (error) {
+      console.error('Failed to get folder:', error);
+      return undefined;
+    }
   }
 
-  async createFolder(data: Partial<Folder> & { projectId: string }): Promise<Folder> {
-    const db = await getDatabase();
-    const id = uuidv4();
-    const now = new Date();
-    
-    await db.run(
-      `INSERT INTO folders (id, project_id, parent_id, name, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, data.projectId, data.parentId || null, data.name, now.toISOString(), now.toISOString()]
-    );
-    
-    return {
-      id,
-      projectId: data.projectId,
+  async createFolder(projectId: string, data: Partial<Folder>): Promise<Folder> {
+    const folder: Folder = {
+      id: data.id || uuidv4(),
+      name: data.name || 'New Folder',
+      projectId,
       parentId: data.parentId,
-      name: data.name!,
-      createdAt: now,
-      updatedAt: now
+      description: data.description,
+      createdAt: data.createdAt || new Date(),
+      updatedAt: data.updatedAt || new Date(),
     };
+
+    try {
+      const collections = this.mongodb.getCollections();
+      await collections.folders.insertOne(folder);
+      return folder;
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      throw error;
+    }
   }
 
-  async updateFolder(id: string, data: Partial<Folder>): Promise<Folder | null> {
-    const db = await getDatabase();
-    const existing = await this.getFolder(id);
-    if (!existing) return null;
-    
-    const updatedData = {
-      name: data.name || existing.name,
-      parentId: data.parentId !== undefined ? data.parentId : existing.parentId,
-      updatedAt: new Date()
-    };
-    
-    await db.run(
-      `UPDATE folders 
-       SET name = ?, parent_id = ?, updated_at = ?
-       WHERE id = ?`,
-      [updatedData.name, updatedData.parentId, updatedData.updatedAt.toISOString(), id]
-    );
-    
-    return {
-      ...existing,
-      ...updatedData
-    };
+  async updateFolder(projectId: string, folderId: string, data: Partial<Folder>): Promise<Folder | undefined> {
+    try {
+      const collections = this.mongodb.getCollections();
+      
+      const updateData = {
+        ...data,
+        updatedAt: new Date(),
+      };
+      
+      // Remove id and projectId from update data
+      delete updateData.id;
+      delete updateData.projectId;
+      
+      const result = await collections.folders.findOneAndUpdate(
+        { id: folderId, projectId },
+        { $set: updateData },
+        { returnDocument: 'after' }
+      );
+      
+      return result || undefined;
+    } catch (error) {
+      console.error('Failed to update folder:', error);
+      return undefined;
+    }
   }
 
-  async deleteFolder(id: string): Promise<boolean> {
-    const db = await getDatabase();
-    const result = await db.run('DELETE FROM folders WHERE id = ?', id);
-    return (result.changes || 0) > 0;
+  async deleteFolder(projectId: string, folderId: string): Promise<boolean> {
+    try {
+      const collections = this.mongodb.getCollections();
+      
+      // Move all flows in this folder to the project root
+      await collections.flows.updateMany(
+        { folderId },
+        { $unset: { folderId: '' } }
+      );
+      
+      // Delete all subfolders
+      await collections.folders.deleteMany({ parentId: folderId });
+      
+      // Delete the folder
+      const result = await collections.folders.deleteOne({ id: folderId, projectId });
+      return result.deletedCount > 0;
+    } catch (error) {
+      console.error('Failed to delete folder:', error);
+      return false;
+    }
   }
 
   async getFolderTree(projectId: string): Promise<any> {
-    const folders = await this.getFolders(projectId);
-    
-    // Build tree structure
-    const tree: any[] = [];
-    const folderMap = new Map<string, any>();
-    
-    folders.forEach(folder => {
-      folderMap.set(folder.id, {
-        ...folder,
-        children: []
-      });
-    });
-    
-    folders.forEach(folder => {
-      if (folder.parentId) {
-        const parent = folderMap.get(folder.parentId);
-        if (parent) {
-          parent.children.push(folderMap.get(folder.id));
+    try {
+      const folders = await this.getFolders(projectId);
+      
+      // Build tree structure
+      const tree: FolderTree[] = [];
+      const folderMap = new Map(folders.map(f => [f.id, { ...f, children: [] as FolderTree[] }]));
+      
+      folders.forEach(folder => {
+        if (folder.parentId && folderMap.has(folder.parentId)) {
+          folderMap.get(folder.parentId)!.children.push(folderMap.get(folder.id)!);
+        } else if (!folder.parentId) {
+          tree.push(folderMap.get(folder.id)!);
         }
-      } else {
-        tree.push(folderMap.get(folder.id));
-      }
-    });
-    
-    return tree;
+      });
+      
+      return tree;
+    } catch (error) {
+      console.error('Failed to get folder tree:', error);
+      return [];
+    }
   }
 
   // Add missing method for organization-based project retrieval
   async getProjectsByOrganization(organizationId: string): Promise<Project[]> {
-    // Since SQLite version doesn't have organization support,
-    // we return all projects for now
-    return this.getProjects();
+    try {
+      const collections = this.mongodb.getCollections();
+      const projects = await collections.projects.find({ organizationId }).toArray();
+      return projects;
+    } catch (error) {
+      console.error('Failed to get projects by organization:', error);
+      return [];
+    }
   }
 
-  // OpenAPI Schema management methods (SQLite implementation)
+  // OpenAPI Schema management methods
   async getOpenAPISchemas(projectId: string): Promise<ProjectOpenAPISchema[]> {
-    const db = await getDatabase();
-    const rows = await db.all(
-      'SELECT * FROM project_openapi_schemas WHERE project_id = ? ORDER BY name',
-      projectId
-    );
-    return rows.map(row => ({
-      id: row.id,
-      projectId: row.project_id,
-      name: row.name,
-      description: row.description,
-      version: row.version,
-      title: row.title,
-      baseUrl: row.base_url,
-      schema: JSON.parse(row.schema),
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    }));
+    try {
+      const collections = this.mongodb.getCollections();
+      const schemas = await collections.projectOpenAPISchemas.find({ projectId }).toArray();
+      return schemas;
+    } catch (error) {
+      console.error('Failed to get OpenAPI schemas:', error);
+      return [];
+    }
   }
 
   async getOpenAPISchema(schemaId: string): Promise<ProjectOpenAPISchema | undefined> {
-    const db = await getDatabase();
-    const row = await db.get('SELECT * FROM project_openapi_schemas WHERE id = ?', schemaId);
-    if (!row) return undefined;
-    
-    return {
-      id: row.id,
-      projectId: row.project_id,
-      name: row.name,
-      description: row.description,
-      version: row.version,
-      title: row.title,
-      baseUrl: row.base_url,
-      schema: JSON.parse(row.schema),
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    };
+    try {
+      const collections = this.mongodb.getCollections();
+      const schema = await collections.projectOpenAPISchemas.findOne({ id: schemaId });
+      return schema || undefined;
+    } catch (error) {
+      console.error('Failed to get OpenAPI schema:', error);
+      return undefined;
+    }
   }
 
   async createOpenAPISchema(data: Partial<ProjectOpenAPISchema>): Promise<ProjectOpenAPISchema> {
-    const db = await getDatabase();
-    const id = uuidv4();
-    const now = new Date();
-    
-    await db.run(
-      `INSERT INTO project_openapi_schemas 
-       (id, project_id, name, description, version, title, base_url, schema, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        data.projectId,
-        data.name,
-        data.description || null,
-        data.version,
-        data.title,
-        data.baseUrl || null,
-        JSON.stringify(data.schema),
-        now.toISOString(),
-        now.toISOString()
-      ]
-    );
-    
-    return {
-      id,
+    const schema: ProjectOpenAPISchema = {
+      id: data.id || uuidv4(),
       projectId: data.projectId!,
       name: data.name!,
       description: data.description,
@@ -267,46 +259,48 @@ export class ProjectStore {
       title: data.title!,
       baseUrl: data.baseUrl,
       schema: data.schema!,
-      createdAt: now,
-      updatedAt: now
+      createdAt: data.createdAt || new Date(),
+      updatedAt: data.updatedAt || new Date(),
     };
+
+    try {
+      const collections = this.mongodb.getCollections();
+      await collections.projectOpenAPISchemas.insertOne(schema);
+      return schema;
+    } catch (error) {
+      console.error('Failed to create OpenAPI schema:', error);
+      throw error;
+    }
   }
 
   async updateOpenAPISchema(schemaId: string, data: Partial<ProjectOpenAPISchema>): Promise<ProjectOpenAPISchema | undefined> {
-    const db = await getDatabase();
-    const now = new Date();
-    
-    const updateData: any = {
-      updated_at: now.toISOString()
-    };
-    
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.version !== undefined) updateData.version = data.version;
-    if (data.title !== undefined) updateData.title = data.title;
-    if (data.baseUrl !== undefined) updateData.base_url = data.baseUrl;
-    if (data.schema !== undefined) updateData.schema = JSON.stringify(data.schema);
-    
-    const setClause = Object.keys(updateData).map(key => `${key} = ?`).join(', ');
-    const values = Object.values(updateData);
-    values.push(schemaId);
-    
-    const result = await db.run(
-      `UPDATE project_openapi_schemas SET ${setClause} WHERE id = ?`,
-      values
-    );
-    
-    if ((result.changes || 0) === 0) {
-      return undefined;
+    try {
+      const collections = this.mongodb.getCollections();
+      const result = await collections.projectOpenAPISchemas.updateOne(
+        { id: schemaId },
+        { $set: { ...data, updatedAt: new Date() } }
+      );
+
+      if (result.matchedCount === 0) {
+        return undefined;
+      }
+
+      return await this.getOpenAPISchema(schemaId);
+    } catch (error) {
+      console.error('Failed to update OpenAPI schema:', error);
+      throw error;
     }
-    
-    return await this.getOpenAPISchema(schemaId);
   }
 
   async deleteOpenAPISchema(schemaId: string): Promise<boolean> {
-    const db = await getDatabase();
-    const result = await db.run('DELETE FROM project_openapi_schemas WHERE id = ?', schemaId);
-    return (result.changes || 0) > 0;
+    try {
+      const collections = this.mongodb.getCollections();
+      const result = await collections.projectOpenAPISchemas.deleteOne({ id: schemaId });
+      return result.deletedCount > 0;
+    } catch (error) {
+      console.error('Failed to delete OpenAPI schema:', error);
+      return false;
+    }
   }
 
   async generateFlowsFromOpenAPISchema(
@@ -315,59 +309,46 @@ export class ProjectStore {
     baseUrlOverride?: string,
     folderId?: string
   ): Promise<TestFlow[]> {
-    const schema = await this.getOpenAPISchema(schemaId);
-    if (!schema) {
-      throw new Error('OpenAPI schema not found');
-    }
+    try {
+      const schema = await this.getOpenAPISchema(schemaId);
+      if (!schema) {
+        throw new Error('OpenAPI schema not found');
+      }
 
-    const parsedAPI = parseOpenAPISchema(schema.schema);
-    const steps = generateStepsFromOpenAPI(parsedAPI, selectedOperations, baseUrlOverride, schema.schema);
-    
-    // Create flows for each operation
-    const flows: TestFlow[] = [];
-    const db = await getDatabase();
-    
-    for (const operation of selectedOperations) {
-      const operationSteps = steps.filter(step => 
-        step.name.includes(operation) || step.config?.url?.includes(operation.split(' ')[1])
-      );
+      const parsedAPI = parseOpenAPISchema(schema.schema);
+      const steps = generateStepsFromOpenAPI(parsedAPI, selectedOperations, baseUrlOverride, schema.schema);
       
-      if (operationSteps.length > 0) {
-        const flowId = uuidv4();
-        const now = new Date();
-        
-        const flow: TestFlow = {
-          id: flowId,
-          projectId: schema.projectId,
-          folderId,
-          name: `${parsedAPI.title} - ${operation}`,
-          description: `Generated from OpenAPI schema: ${schema.name}`,
-          steps: operationSteps,
-          connections: [],
-          createdAt: now,
-          updatedAt: now,
-        };
-        
-        // Insert flow into database
-        await db.run(
-          `INSERT INTO flows (id, project_id, folder_id, name, description, steps, created_at, updated_at) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            flowId,
-            schema.projectId,
-            folderId || null,
-            flow.name,
-            flow.description,
-            JSON.stringify(operationSteps),
-            now.toISOString(),
-            now.toISOString()
-          ]
+      // Create flows for each operation
+      const flows: TestFlow[] = [];
+      const collections = this.mongodb.getCollections();
+      
+      for (const operation of selectedOperations) {
+        const operationSteps = steps.filter(step => 
+          step.name.includes(operation) || step.config?.url?.includes(operation.split(' ')[1])
         );
         
-        flows.push(flow);
+        if (operationSteps.length > 0) {
+          const flow: TestFlow = {
+            id: uuidv4(),
+            projectId: schema.projectId,
+            folderId,
+            name: `${parsedAPI.title} - ${operation}`,
+            description: `Generated from OpenAPI schema: ${schema.name}`,
+            steps: operationSteps,
+            connections: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          
+          await collections.flows.insertOne(flow);
+          flows.push(flow);
+        }
       }
+      
+      return flows;
+    } catch (error) {
+      console.error('Failed to generate flows from OpenAPI schema:', error);
+      throw error;
     }
-    
-    return flows;
   }
 }
