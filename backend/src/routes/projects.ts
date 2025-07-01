@@ -1,292 +1,400 @@
 import { Router } from 'express';
 import { ProjectStore } from '../services/ProjectStore';
+import { FlowStore } from '../services/FlowStore';
+import { OrganizationStoreMongo } from '../services/OrganizationStoreMongo';
+import { AuthRequest } from '../middleware/auth';
 import * as organizationsService from '../services/organizations';
 
-const projectStore = new ProjectStore();
+export const projectRoutes = (projectStore: ProjectStore, flowStore?: FlowStore, organizationStore?: OrganizationStoreMongo) => {
+  const router = Router();
 
-export const projectRoutes = Router();
-
-// Get all projects
-projectRoutes.get('/', async (req, res) => {
-  try {
-    const projects = await projectStore.getProjects();
-    res.json(projects);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch projects' });
-  }
-});
-
-// Get single project
-projectRoutes.get('/:id', async (req, res) => {
-  try {
-    const project = await projectStore.getProject(req.params.id);
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found' });
+  // Get all projects
+  router.get('/', async (req: AuthRequest, res) => {
+    try {
+      if (!req.user) {
+        const projects = await projectStore.getProjects();
+        return res.json(projects);
+      }
+      
+      // Filter projects by user's organization
+      const projects = await projectStore.getProjectsByOrganization(req.user.organizationId);
+      res.json(projects);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get projects' });
     }
-    res.json(project);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch project' });
-  }
-});
+  });
 
-// Create project
-projectRoutes.post('/', async (req, res) => {
-  try {
-    const { name, description } = req.body;
-    if (!name) {
-      return res.status(400).json({ error: 'Name is required' });
+  // Get single project
+  router.get('/:id', async (req: AuthRequest, res) => {
+    try {
+      const project = await projectStore.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      
+      // Check if user has access to this project
+      if (req.user && project.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      res.json(project);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get project' });
     }
-    
-    const project = await projectStore.createProject({
-      name,
-      description
-    });
-    res.status(201).json(project);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create project' });
-  }
-});
+  });
 
-// Update project
-projectRoutes.put('/:id', async (req, res) => {
-  try {
-    const { name, description } = req.body;
-    const project = await projectStore.updateProject(req.params.id, {
-      name,
-      description
-    });
-    
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found' });
+  // Create project
+  router.post('/', async (req: AuthRequest, res) => {
+    try {
+      const projectData = {
+        ...req.body,
+        organizationId: req.user?.organizationId || req.body.organizationId
+      };
+      
+      const project = await projectStore.createProject(projectData);
+      res.status(201).json(project);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create project' });
     }
-    
-    res.json(project);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update project' });
-  }
-});
+  });
 
-// Delete project
-projectRoutes.delete('/:id', async (req, res) => {
-  try {
-    const success = await projectStore.deleteProject(req.params.id);
-    if (!success) {
-      return res.status(404).json({ error: 'Project not found or is default' });
+  // Update project
+  router.put('/:id', async (req: AuthRequest, res) => {
+    try {
+      const existingProject = await projectStore.getProject(req.params.id);
+      if (!existingProject) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      
+      // Check if user has access to this project
+      if (req.user && existingProject.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const project = await projectStore.updateProject(req.params.id, req.body);
+      res.json(project);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update project' });
     }
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete project' });
-  }
-});
+  });
 
-// Get project folders
-projectRoutes.get('/:id/folders', async (req, res) => {
-  try {
-    const folders = await projectStore.getFolders(req.params.id);
-    res.json(folders);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch folders' });
-  }
-});
-
-// Get folder tree
-projectRoutes.get('/:id/folder-tree', async (req, res) => {
-  try {
-    const tree = await projectStore.getFolderTree(req.params.id);
-    res.json(tree);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch folder tree' });
-  }
-});
-
-// Create folder
-projectRoutes.post('/:id/folders', async (req, res) => {
-  try {
-    const { name, parentId } = req.body;
-    if (!name) {
-      return res.status(400).json({ error: 'Name is required' });
+  // Delete project
+  router.delete('/:id', async (req: AuthRequest, res) => {
+    try {
+      const project = await projectStore.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+      
+      // Check if user has access to this project
+      if (req.user && project.organizationId !== req.user.organizationId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      // Check if user has admin role
+      if (req.user && !['admin', 'owner'].includes(req.user.role)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      
+      const success = await projectStore.deleteProject(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete project' });
     }
-    
-    const folder = await projectStore.createFolder({
-      projectId: req.params.id,
-      name,
-      parentId
-    });
-    res.status(201).json(folder);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create folder' });
-  }
-});
+  });
 
-// Update folder
-projectRoutes.put('/:projectId/folders/:folderId', async (req, res) => {
-  try {
-    const { name, parentId } = req.body;
-    const folder = await projectStore.updateFolder(req.params.folderId, {
-      name,
-      parentId
-    });
-    
-    if (!folder) {
-      return res.status(404).json({ error: 'Folder not found' });
+  // Get project folders
+  router.get('/:id/folders', async (req, res) => {
+    try {
+      const folders = await projectStore.getFolders(req.params.id);
+      res.json(folders);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get folders' });
     }
-    
-    res.json(folder);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update folder' });
-  }
-});
+  });
 
-// Delete folder
-projectRoutes.delete('/:projectId/folders/:folderId', async (req, res) => {
-  try {
-    const success = await projectStore.deleteFolder(req.params.folderId);
-    if (!success) {
-      return res.status(404).json({ error: 'Folder not found' });
+  // Get project folder tree
+  router.get('/:id/folder-tree', async (req, res) => {
+    try {
+      const tree = await projectStore.getFolderTree(req.params.id);
+      res.json(tree);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to get folder tree' });
     }
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete folder' });
-  }
-});
+  });
 
-// Project team routes
-projectRoutes.get('/:id/teams', async (req, res) => {
-  try {
-    const teams = await organizationsService.getProjectTeams(req.params.id);
-    res.json(teams);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch project teams' });
-  }
-});
-
-projectRoutes.post('/:id/teams', async (req, res) => {
-  try {
-    const { teamId, permissions } = req.body;
-    if (!teamId || !permissions) {
-      return res.status(400).json({ error: 'teamId and permissions are required' });
+  // Create folder
+  router.post('/:id/folders', async (req, res) => {
+    try {
+      const folder = await projectStore.createFolder(req.params.id, req.body);
+      res.status(201).json(folder);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create folder' });
     }
-    const projectTeam = await organizationsService.addTeamToProject(req.params.id, teamId, permissions);
-    res.status(201).json(projectTeam);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to add team to project' });
-  }
-});
+  });
 
-projectRoutes.put('/:id/teams/:teamId', async (req, res) => {
-  try {
-    const { permissions } = req.body;
-    if (!permissions) {
-      return res.status(400).json({ error: 'permissions is required' });
+  // Update folder
+  router.put('/:projectId/folders/:folderId', async (req, res) => {
+    try {
+      const folder = await projectStore.updateFolder(
+        req.params.projectId,
+        req.params.folderId,
+        req.body
+      );
+      if (!folder) {
+        return res.status(404).json({ error: 'Folder not found' });
+      }
+      res.json(folder);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update folder' });
     }
-    const projectTeam = await organizationsService.updateProjectTeamPermissions(req.params.id, req.params.teamId, permissions);
-    if (!projectTeam) {
-      return res.status(404).json({ error: 'Project team not found' });
+  });
+
+  // Delete folder
+  router.delete('/:projectId/folders/:folderId', async (req, res) => {
+    try {
+      const success = await projectStore.deleteFolder(
+        req.params.projectId,
+        req.params.folderId
+      );
+      if (!success) {
+        return res.status(404).json({ error: 'Folder not found' });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete folder' });
     }
-    res.json(projectTeam);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update project team permissions' });
-  }
-});
+  });
 
-projectRoutes.delete('/:id/teams/:teamId', async (req, res) => {
-  try {
-    const deleted = await organizationsService.removeTeamFromProject(req.params.id, req.params.teamId);
-    if (!deleted) {
-      return res.status(404).json({ error: 'Project team not found' });
+  // Project team routes
+  router.get('/:id/teams', async (req, res) => {
+    try {
+      const teams = await organizationsService.getProjectTeams(req.params.id);
+      res.json(teams);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch project teams' });
     }
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to remove team from project' });
-  }
-});
+  });
 
-// OpenAPI Schema routes
-projectRoutes.get('/:id/openapi-schemas', async (req, res) => {
-  try {
-    const schemas = await projectStore.getOpenAPISchemas(req.params.id);
-    res.json(schemas);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch OpenAPI schemas' });
-  }
-});
-
-projectRoutes.post('/:id/openapi-schemas', async (req, res) => {
-  try {
-    const { name, description, version, title, baseUrl, schema } = req.body;
-    if (!name || !version || !title || !schema) {
-      return res.status(400).json({ error: 'name, version, title, and schema are required' });
+  router.post('/:id/teams', async (req, res) => {
+    try {
+      const { teamId, permissions } = req.body;
+      if (!teamId || !permissions) {
+        return res.status(400).json({ error: 'teamId and permissions are required' });
+      }
+      const projectTeam = await organizationsService.addTeamToProject(req.params.id, teamId, permissions);
+      res.status(201).json(projectTeam);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to add team to project' });
     }
-    
-    const openApiSchema = await projectStore.createOpenAPISchema({
-      projectId: req.params.id,
-      name,
-      description,
-      version,
-      title,
-      baseUrl,
-      schema
-    });
-    res.status(201).json(openApiSchema);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create OpenAPI schema' });
-  }
-});
+  });
 
-projectRoutes.put('/:id/openapi-schemas/:schemaId', async (req, res) => {
-  try {
-    const { name, description, version, title, baseUrl, schema } = req.body;
-    const openApiSchema = await projectStore.updateOpenAPISchema(req.params.schemaId, {
-      name,
-      description,
-      version,
-      title,
-      baseUrl,
-      schema
-    });
-    
-    if (!openApiSchema) {
-      return res.status(404).json({ error: 'OpenAPI schema not found' });
+  router.put('/:id/teams/:teamId', async (req, res) => {
+    try {
+      const { permissions } = req.body;
+      if (!permissions) {
+        return res.status(400).json({ error: 'permissions is required' });
+      }
+      const projectTeam = await organizationsService.updateProjectTeamPermissions(req.params.id, req.params.teamId, permissions);
+      if (!projectTeam) {
+        return res.status(404).json({ error: 'Project team not found' });
+      }
+      res.json(projectTeam);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update project team permissions' });
+    }
+  });
+
+  router.delete('/:id/teams/:teamId', async (req, res) => {
+    try {
+      const deleted = await organizationsService.removeTeamFromProject(req.params.id, req.params.teamId);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Project team not found' });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to remove team from project' });
+    }
+  });
+
+  // Export project
+  router.get('/:id/export', async (req, res) => {
+    if (!flowStore) {
+      return res.status(500).json({ error: 'FlowStore not available' });
     }
     
-    res.json(openApiSchema);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update OpenAPI schema' });
-  }
-});
+    try {
+      const projectId = req.params.id;
+      const project = await projectStore.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
 
-projectRoutes.delete('/:id/openapi-schemas/:schemaId', async (req, res) => {
-  try {
-    const success = await projectStore.deleteOpenAPISchema(req.params.schemaId);
-    if (!success) {
-      return res.status(404).json({ error: 'OpenAPI schema not found' });
-    }
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete OpenAPI schema' });
-  }
-});
+      const flows = await flowStore.getFlowsByProject(projectId);
+      const folders = await projectStore.getFolders(projectId);
 
-projectRoutes.post('/:id/openapi-schemas/:schemaId/generate-flows', async (req, res) => {
-  try {
-    const { selectedOperations, baseUrlOverride, folderId } = req.body;
-    if (!selectedOperations || selectedOperations.length === 0) {
-      return res.status(400).json({ error: 'selectedOperations is required' });
+      const exportData = {
+        project,
+        flows,
+        folders,
+        exportDate: new Date(),
+        version: '1.0'
+      };
+
+      res.json(exportData);
+    } catch (error) {
+      console.error('Failed to export project:', error);
+      res.status(500).json({ error: 'Failed to export project' });
     }
-    
-    const schema = await projectStore.getOpenAPISchema(req.params.schemaId);
-    if (!schema) {
-      return res.status(404).json({ error: 'OpenAPI schema not found' });
+  });
+
+  // Import project
+  router.post('/:id/import', async (req, res) => {
+    if (!flowStore) {
+      return res.status(500).json({ error: 'FlowStore not available' });
     }
-    
-    const flows = await projectStore.generateFlowsFromOpenAPISchema(
-      req.params.schemaId,
-      selectedOperations,
-      baseUrlOverride,
-      folderId
-    );
-    res.status(201).json(flows);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to generate flows from OpenAPI schema' });
-  }
-});
+
+    try {
+      const projectId = req.params.id;
+      const { flows, folders } = req.body;
+
+      if (!flows || !Array.isArray(flows)) {
+        return res.status(400).json({ error: 'Invalid import data: flows array required' });
+      }
+
+      const project = await projectStore.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      // Import folders first
+      const folderIdMap: { [oldId: string]: string } = {};
+      if (folders && Array.isArray(folders)) {
+        for (const folderData of folders) {
+          const newFolder = await projectStore.createFolder(projectId, {
+            name: folderData.name,
+            description: folderData.description
+          });
+          folderIdMap[folderData.id] = newFolder.id;
+        }
+      }
+
+      // Import flows
+      const importedFlows = [];
+      for (const flowData of flows) {
+        const newFlowData = {
+          ...flowData,
+          projectId,
+          folderId: flowData.folderId ? folderIdMap[flowData.folderId] : null
+        };
+        delete newFlowData.id;
+        delete newFlowData.createdAt;
+        delete newFlowData.updatedAt;
+
+        const newFlow = await flowStore.createFlow(newFlowData);
+        importedFlows.push(newFlow);
+      }
+
+      res.json({
+        message: 'Project imported successfully',
+        importedFlows: importedFlows.length,
+        importedFolders: Object.keys(folderIdMap).length
+      });
+    } catch (error) {
+      console.error('Failed to import project:', error);
+      res.status(500).json({ error: 'Failed to import project' });
+    }
+  });
+
+  // OpenAPI Schema routes
+  router.get('/:id/openapi-schemas', async (req, res) => {
+    try {
+      const schemas = await projectStore.getOpenAPISchemas(req.params.id);
+      res.json(schemas);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch OpenAPI schemas' });
+    }
+  });
+
+  router.post('/:id/openapi-schemas', async (req, res) => {
+    try {
+      const { name, description, version, title, baseUrl, schema } = req.body;
+      if (!name || !version || !title || !schema) {
+        return res.status(400).json({ error: 'name, version, title, and schema are required' });
+      }
+      
+      const openApiSchema = await projectStore.createOpenAPISchema({
+        projectId: req.params.id,
+        name,
+        description,
+        version,
+        title,
+        baseUrl,
+        schema
+      });
+      res.status(201).json(openApiSchema);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create OpenAPI schema' });
+    }
+  });
+
+  router.put('/:id/openapi-schemas/:schemaId', async (req, res) => {
+    try {
+      const { name, description, version, title, baseUrl, schema } = req.body;
+      const openApiSchema = await projectStore.updateOpenAPISchema(req.params.schemaId, {
+        name,
+        description,
+        version,
+        title,
+        baseUrl,
+        schema
+      });
+      
+      if (!openApiSchema) {
+        return res.status(404).json({ error: 'OpenAPI schema not found' });
+      }
+      
+      res.json(openApiSchema);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update OpenAPI schema' });
+    }
+  });
+
+  router.delete('/:id/openapi-schemas/:schemaId', async (req, res) => {
+    try {
+      const success = await projectStore.deleteOpenAPISchema(req.params.schemaId);
+      if (!success) {
+        return res.status(404).json({ error: 'OpenAPI schema not found' });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete OpenAPI schema' });
+    }
+  });
+
+  router.post('/:id/openapi-schemas/:schemaId/generate-flows', async (req, res) => {
+    try {
+      const { selectedOperations, baseUrlOverride, folderId } = req.body;
+      if (!selectedOperations || selectedOperations.length === 0) {
+        return res.status(400).json({ error: 'selectedOperations is required' });
+      }
+      
+      const schema = await projectStore.getOpenAPISchema(req.params.schemaId);
+      if (!schema) {
+        return res.status(404).json({ error: 'OpenAPI schema not found' });
+      }
+      
+      const flows = await projectStore.generateFlowsFromOpenAPISchema(
+        req.params.schemaId,
+        selectedOperations,
+        baseUrlOverride,
+        folderId
+      );
+      res.status(201).json(flows);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to generate flows from OpenAPI schema' });
+    }
+  });
+
+  return router;
+};

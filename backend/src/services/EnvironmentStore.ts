@@ -1,146 +1,183 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Environment, EnvironmentVariable, IEnvironmentStore } from '../../../shared/src/types';
-import { getDatabase } from '../db/database';
+import { MongoDB } from '../db/mongodb';
 
 export class EnvironmentStore implements IEnvironmentStore {
-  async getAllEnvironments(): Promise<Environment[]> {
-    const db = await getDatabase();
-    const rows = await db.all('SELECT * FROM environments ORDER BY name');
-    return rows.map(row => ({
-      ...row,
-      organizationId: row.organization_id || 'default-org',
-      isDefault: Boolean(row.is_default),
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    }));
+  private mongodb: MongoDB;
+
+  constructor(mongodb: MongoDB) {
+    this.mongodb = mongodb;
   }
 
-  async getEnvironment(id: string): Promise<Environment | null> {
-    const db = await getDatabase();
-    const row = await db.get('SELECT * FROM environments WHERE id = ?', id);
-    if (!row) return null;
-    
-    return {
-      ...row,
-      organizationId: row.organization_id || 'default-org',
-      isDefault: Boolean(row.is_default),
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    };
+  async getEnvironmentsByOrganization(organizationId: string): Promise<Environment[]> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const environments = await collections.environments.find({ organizationId }).toArray();
+      return environments;
+    } catch (error) {
+      console.error('Failed to get environments by organization:', error);
+      return [];
+    }
+  }
+
+  async getAllEnvironments(): Promise<Environment[]> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const environments = await collections.environments.find({}).toArray();
+      return environments;
+    } catch (error) {
+      console.error('Failed to get environments:', error);
+      return [];
+    }
+  }
+
+  async getEnvironment(id: string): Promise<Environment | undefined> {
+    try {
+      const collections = this.mongodb.getCollections();
+      const environment = await collections.environments.findOne({ id });
+      return environment || undefined;
+    } catch (error) {
+      console.error('Failed to get environment:', error);
+      return undefined;
+    }
   }
 
   async createEnvironment(data: Partial<Environment>): Promise<Environment> {
-    const db = await getDatabase();
-    const id = uuidv4();
-    const now = new Date();
-    
-    // If this is set as default, unset all other defaults
-    if (data.isDefault) {
-      await db.run('UPDATE environments SET is_default = FALSE');
-    }
-    
-    await db.run(
-      `INSERT INTO environments (id, organization_id, name, description, is_default, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, data.organizationId || 'default-org', data.name, data.description || null, data.isDefault || false, now.toISOString(), now.toISOString()]
-    );
-    
-    return {
-      id,
+    const environment: Environment = {
+      id: data.id || uuidv4(),
       organizationId: data.organizationId || 'default-org',
-      name: data.name!,
+      name: data.name || 'New Environment',
       description: data.description,
       isDefault: data.isDefault || false,
-      createdAt: now,
-      updatedAt: now
+      createdAt: data.createdAt || new Date(),
+      updatedAt: data.updatedAt || new Date(),
     };
+
+    try {
+      const collections = this.mongodb.getCollections();
+      
+      // If this is set as default, unset any existing defaults in the same organization
+      if (environment.isDefault) {
+        await collections.environments.updateMany(
+          { isDefault: true, organizationId: environment.organizationId },
+          { $set: { isDefault: false } }
+        );
+      }
+      
+      await collections.environments.insertOne(environment);
+      return environment;
+    } catch (error) {
+      console.error('Failed to create environment:', error);
+      throw error;
+    }
   }
 
-  async updateEnvironment(id: string, data: Partial<Environment>): Promise<Environment | null> {
-    const db = await getDatabase();
-    const existing = await this.getEnvironment(id);
-    if (!existing) return null;
-    
-    // If this is set as default, unset all other defaults
-    if (data.isDefault && !existing.isDefault) {
-      await db.run('UPDATE environments SET is_default = FALSE');
+  async updateEnvironment(id: string, data: Partial<Environment>): Promise<Environment | undefined> {
+    try {
+      const collections = this.mongodb.getCollections();
+      
+      const updateData = {
+        ...data,
+        updatedAt: new Date(),
+      };
+      
+      // Remove id from update data
+      delete updateData.id;
+      
+      // If setting as default, unset any existing defaults in the same organization
+      if (updateData.isDefault) {
+        const env = await collections.environments.findOne({ id });
+        if (env) {
+          await collections.environments.updateMany(
+            { isDefault: true, organizationId: env.organizationId, id: { $ne: id } },
+            { $set: { isDefault: false } }
+          );
+        }
+      }
+      
+      const result = await collections.environments.findOneAndUpdate(
+        { id },
+        { $set: updateData },
+        { returnDocument: 'after' }
+      );
+      
+      return result || undefined;
+    } catch (error) {
+      console.error('Failed to update environment:', error);
+      return undefined;
     }
-    
-    const updatedData = {
-      name: data.name || existing.name,
-      description: data.description !== undefined ? data.description : existing.description,
-      isDefault: data.isDefault !== undefined ? data.isDefault : existing.isDefault,
-      updatedAt: new Date()
-    };
-    
-    await db.run(
-      `UPDATE environments 
-       SET name = ?, description = ?, is_default = ?, updated_at = ?
-       WHERE id = ?`,
-      [updatedData.name, updatedData.description, updatedData.isDefault, updatedData.updatedAt.toISOString(), id]
-    );
-    
-    return {
-      ...existing,
-      ...updatedData
-    };
   }
 
   async deleteEnvironment(id: string): Promise<boolean> {
-    const db = await getDatabase();
-    const result = await db.run('DELETE FROM environments WHERE id = ? AND is_default = FALSE', id);
-    return (result.changes || 0) > 0;
+    try {
+      const collections = this.mongodb.getCollections();
+      
+      // Delete all variables for this environment
+      await collections.environmentVariables.deleteMany({ environmentId: id });
+      
+      // Delete the environment
+      const result = await collections.environments.deleteOne({ id });
+      return result.deletedCount > 0;
+    } catch (error) {
+      console.error('Failed to delete environment:', error);
+      return false;
+    }
   }
 
-  // Environment Variables
   async getEnvironmentVariables(environmentId: string): Promise<EnvironmentVariable[]> {
-    const db = await getDatabase();
-    const rows = await db.all('SELECT * FROM environment_variables WHERE environment_id = ? ORDER BY key', environmentId);
-    return rows.map(row => ({
-      ...row,
-      environmentId: row.environment_id,
-      isSecret: Boolean(row.is_secret),
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    }));
+    try {
+      console.log('Getting environment variables for environment:', environmentId);
+      const collections = this.mongodb.getCollections();
+      const variables = await collections.environmentVariables.find({ environmentId }).toArray();
+      console.log(`Found ${variables.length} variables:`, variables.map(v => ({ key: v.key, value: v.isSecret ? '[HIDDEN]' : v.value })));
+      return variables;
+    } catch (error) {
+      console.error('Failed to get environment variables:', error);
+      return [];
+    }
   }
 
-  async setEnvironmentVariable(environmentId: string, key: string, value: string, isSecret: boolean = false): Promise<EnvironmentVariable> {
-    const db = await getDatabase();
-    const id = uuidv4();
-    const now = new Date();
-    
-    // Upsert the variable
-    await db.run(
-      `INSERT INTO environment_variables (id, environment_id, key, value, is_secret, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(environment_id, key) 
-       DO UPDATE SET value = ?, is_secret = ?, updated_at = ?`,
-      [id, environmentId, key, value, isSecret, now.toISOString(), now.toISOString(), value, isSecret, now.toISOString()]
-    );
-    
-    const row = await db.get(
-      'SELECT * FROM environment_variables WHERE environment_id = ? AND key = ?',
-      [environmentId, key]
-    );
-    
-    return {
-      id: row.id,
-      environmentId: row.environment_id,
-      key: row.key,
-      value: row.value,
-      isSecret: Boolean(row.is_secret),
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at)
-    };
+  async setEnvironmentVariable(
+    environmentId: string,
+    key: string,
+    value: string,
+    isSecret: boolean = false
+  ): Promise<EnvironmentVariable> {
+    try {
+      const collections = this.mongodb.getCollections();
+      
+      const variable: EnvironmentVariable = {
+        id: uuidv4(),
+        environmentId,
+        key,
+        value,
+        isSecret,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      
+      // Upsert the variable (update if exists, insert if not)
+      await collections.environmentVariables.replaceOne(
+        { environmentId, key },
+        variable,
+        { upsert: true }
+      );
+      
+      return variable;
+    } catch (error) {
+      console.error('Failed to set environment variable:', error);
+      throw error;
+    }
   }
 
   async deleteEnvironmentVariable(environmentId: string, key: string): Promise<boolean> {
-    const db = await getDatabase();
-    const result = await db.run(
-      'DELETE FROM environment_variables WHERE environment_id = ? AND key = ?',
-      [environmentId, key]
-    );
-    return (result.changes || 0) > 0;
+    try {
+      const collections = this.mongodb.getCollections();
+      const result = await collections.environmentVariables.deleteOne({ environmentId, key });
+      return result.deletedCount > 0;
+    } catch (error) {
+      console.error('Failed to delete environment variable:', error);
+      return false;
+    }
   }
 }

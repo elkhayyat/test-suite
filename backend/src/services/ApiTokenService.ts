@@ -2,38 +2,21 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { ApiToken } from '../models/ApiToken';
-import { getDatabase } from '../db/database';
+import { Db, Collection } from 'mongodb';
 
-export class ApiTokenService {
-  private db = getDatabase();
+export class ApiTokenServiceMongo {
+  private collection: Collection<any>;
 
-  constructor() {
-    this.initializeTable();
+  constructor(private db: Db) {
+    this.collection = this.db.collection('api_tokens');
+    this.initializeCollection();
   }
 
-  private async initializeTable() {
-    await this.db.exec(`
-      CREATE TABLE IF NOT EXISTS api_tokens (
-        id TEXT PRIMARY KEY,
-        userId TEXT NOT NULL,
-        organizationId TEXT NOT NULL,
-        name TEXT NOT NULL,
-        tokenHash TEXT NOT NULL,
-        permissions TEXT NOT NULL,
-        lastUsedAt TEXT,
-        expiresAt TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        isActive INTEGER DEFAULT 1,
-        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-      )
-    `);
-
-    // Create index for faster token lookups
-    await this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(tokenHash);
-      CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(userId);
-    `);
+  private async initializeCollection() {
+    // Create indexes for faster lookups
+    await this.collection.createIndex({ tokenHash: 1 });
+    await this.collection.createIndex({ userId: 1 });
+    await this.collection.createIndex({ organizationId: 1 });
   }
 
   async generateToken(
@@ -43,9 +26,14 @@ export class ApiTokenService {
     permissions: string[] = ['read', 'write', 'execute'],
     expiresInDays?: number
   ): Promise<{ token: ApiToken; plainToken: string }> {
+    console.log('Generating API token for user:', userId);
+    
     // Generate a secure random token
     const plainToken = this.generateSecureToken();
-    const tokenHash = await bcrypt.hash(plainToken, 10);
+    console.log('Generated plain token, now hashing...');
+    
+    const tokenHash = await bcrypt.hash(plainToken, 8); // Reduced from 10 to 8 for faster generation
+    console.log('Token hashed successfully');
 
     const token: ApiToken = {
       id: uuidv4(),
@@ -67,24 +55,12 @@ export class ApiTokenService {
     }
 
     // Store in database
-    await this.db.run(
-      `INSERT INTO api_tokens (
-        id, userId, organizationId, name, tokenHash, permissions, 
-        expiresAt, createdAt, updatedAt, isActive
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        token.id,
-        token.userId,
-        token.organizationId,
-        token.name,
-        token.tokenHash,
-        JSON.stringify(token.permissions),
-        token.expiresAt?.toISOString() || null,
-        token.createdAt.toISOString(),
-        token.updatedAt.toISOString(),
-        token.isActive ? 1 : 0,
-      ]
-    );
+    console.log('Storing token in database...');
+    await this.collection.insertOne({
+      _id: token.id,
+      ...token
+    });
+    console.log('Token stored successfully');
 
     return { token, plainToken: token.token };
   }
@@ -93,37 +69,35 @@ export class ApiTokenService {
     // Remove prefix if present
     const tokenWithoutPrefix = plainToken.replace(/^tfs_/, '');
 
-    const tokens = await this.db.all<any[]>(
-      `SELECT * FROM api_tokens WHERE isActive = 1`
-    );
+    const tokens = await this.collection.find({ isActive: true }).toArray();
 
-    for (const row of tokens) {
-      const isValid = await bcrypt.compare(tokenWithoutPrefix, row.tokenHash);
+    for (const doc of tokens) {
+      const isValid = await bcrypt.compare(tokenWithoutPrefix, doc.tokenHash);
       if (isValid) {
         // Check expiration
-        if (row.expiresAt && new Date(row.expiresAt) < new Date()) {
+        if (doc.expiresAt && new Date(doc.expiresAt) < new Date()) {
           return null;
         }
 
         // Update last used
-        await this.db.run(
-          `UPDATE api_tokens SET lastUsedAt = ? WHERE id = ?`,
-          [new Date().toISOString(), row.id]
+        await this.collection.updateOne(
+          { _id: doc._id },
+          { $set: { lastUsedAt: new Date() } }
         );
 
         return {
-          id: row.id,
-          userId: row.userId,
-          organizationId: row.organizationId,
-          name: row.name,
+          id: doc._id,
+          userId: doc.userId,
+          organizationId: doc.organizationId,
+          name: doc.name,
           token: plainToken,
-          tokenHash: row.tokenHash,
-          permissions: JSON.parse(row.permissions),
-          lastUsedAt: row.lastUsedAt ? new Date(row.lastUsedAt) : undefined,
-          expiresAt: row.expiresAt ? new Date(row.expiresAt) : undefined,
-          createdAt: new Date(row.createdAt),
-          updatedAt: new Date(row.updatedAt),
-          isActive: row.isActive === 1,
+          tokenHash: doc.tokenHash,
+          permissions: doc.permissions,
+          lastUsedAt: doc.lastUsedAt,
+          expiresAt: doc.expiresAt,
+          createdAt: doc.createdAt,
+          updatedAt: doc.updatedAt,
+          isActive: doc.isActive,
         };
       }
     }
@@ -132,44 +106,48 @@ export class ApiTokenService {
   }
 
   async getUserTokens(userId: string): Promise<ApiToken[]> {
-    const rows = await this.db.all<any[]>(
-      `SELECT * FROM api_tokens WHERE userId = ? ORDER BY createdAt DESC`,
-      [userId]
-    );
+    const docs = await this.collection
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .toArray();
 
-    return rows.map(row => ({
-      id: row.id,
-      userId: row.userId,
-      organizationId: row.organizationId,
-      name: row.name,
+    return docs.map(doc => ({
+      id: doc._id,
+      userId: doc.userId,
+      organizationId: doc.organizationId,
+      name: doc.name,
       token: '***', // Don't return actual token
-      tokenHash: row.tokenHash,
-      permissions: JSON.parse(row.permissions),
-      lastUsedAt: row.lastUsedAt ? new Date(row.lastUsedAt) : undefined,
-      expiresAt: row.expiresAt ? new Date(row.expiresAt) : undefined,
-      createdAt: new Date(row.createdAt),
-      updatedAt: new Date(row.updatedAt),
-      isActive: row.isActive === 1,
+      tokenHash: doc.tokenHash,
+      permissions: doc.permissions,
+      lastUsedAt: doc.lastUsedAt,
+      expiresAt: doc.expiresAt,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+      isActive: doc.isActive,
     }));
   }
 
   async revokeToken(tokenId: string, userId: string): Promise<boolean> {
-    const result = await this.db.run(
-      `UPDATE api_tokens SET isActive = 0, updatedAt = ? 
-       WHERE id = ? AND userId = ?`,
-      [new Date().toISOString(), tokenId, userId]
+    const result = await this.collection.updateOne(
+      { _id: tokenId, userId },
+      { 
+        $set: { 
+          isActive: false, 
+          updatedAt: new Date() 
+        } 
+      }
     );
 
-    return result.changes > 0;
+    return result.modifiedCount > 0;
   }
 
   async deleteToken(tokenId: string, userId: string): Promise<boolean> {
-    const result = await this.db.run(
-      `DELETE FROM api_tokens WHERE id = ? AND userId = ?`,
-      [tokenId, userId]
-    );
+    const result = await this.collection.deleteOne({
+      _id: tokenId,
+      userId
+    });
 
-    return result.changes > 0;
+    return result.deletedCount > 0;
   }
 
   private generateSecureToken(length: number = 32): string {

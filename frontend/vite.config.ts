@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
   const backendUrl = env.VITE_BACKEND_URL || 'http://localhost:3001'
   
   return {
-    plugins: [react()],
+    plugins: [react()] as any,
     server: {
       port: 3000,
       proxy: {

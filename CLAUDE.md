@@ -10,18 +10,15 @@ Test Flow Suite is a web-based test automation platform with visual flow editing
 
 ### Quick Start (Recommended)
 - `make install` - Install all dependencies for the monorepo
-- `make dev` - Start everything with MongoDB (recommended setup)
-- `make dev-sqlite` - Start with SQLite backend (fallback option)
+- `make dev` - Start everything with MongoDB
 
 ### Development
 - `npm install` - Install all dependencies for the monorepo
-- `npm run dev` - Start both frontend (port 3000) and backend (port 3001) in development mode (SQLite)
-- `npm run dev:mongo` - Start with MongoDB backend
+- `npm run dev` - Start both frontend (port 3000) and backend (port 3001) with MongoDB
 - `npm run build` - Build all packages
 
 ### Backend-specific
-- `cd backend && npm run dev` - Run backend only with hot reload (SQLite)
-- `cd backend && npm run dev:mongo` - Run backend with MongoDB
+- `cd backend && npm run dev` - Run backend only with hot reload (MongoDB)
 - `cd backend && npm run build` - Compile TypeScript
 - `cd backend && npm start` - Run production server
 
@@ -37,8 +34,7 @@ Test Flow Suite is a web-based test automation platform with visual flow editing
 
 ### Production
 - `make build` - Build all packages
-- `make start` - Start production server (SQLite)
-- `make start-mongo` - Start production server (MongoDB)
+- `make start` - Start production server (MongoDB)
 
 ### Testing
 - `npm test` - Run all tests (frontend + backend)
@@ -65,17 +61,17 @@ Test Flow Suite is a web-based test automation platform with visual flow editing
 ### Backend Architecture
 The backend uses dependency injection and service-oriented architecture:
 
-1. **Entry Points**: 
-   - `backend/src/index.ts` - SQLite version
-   - `backend/src/index-mongo.ts` - MongoDB version
+1. **Entry Point**: 
+   - `backend/src/index.ts` - Main server entry point with MongoDB
 2. **Services**:
-   - `FlowStore` / `FlowStoreMongo` - Manages test flows with in-memory cache and persistence
-   - `ProjectStore` / `ProjectStoreMongo` - Manages projects and folders
-   - `EnvironmentStore` / `EnvironmentStoreMongo` - Manages environments and variables
+   - `FlowStore` - Manages test flows with in-memory cache and MongoDB persistence
+   - `ProjectStore` - Manages projects and folders in MongoDB
+   - `EnvironmentStore` - Manages environments and variables in MongoDB
+   - `ApiTokenService` - Manages API tokens for authentication
    - `TestRunner` - Executes test flows, handles Playwright/axios, emits real-time updates
 3. **Database**: 
-   - SQLite with singleton pattern at `backend/src/db/database.ts`
    - MongoDB with connection at `backend/src/db/mongodb.ts`
+   - Collections include flows, environments, projects, folders with JSON schema validation
 4. **Routes**: Factory pattern for dependency injection (e.g., `flowRoutes(flowStore)`)
 
 ### Frontend Architecture
@@ -107,16 +103,13 @@ Socket.io events are emitted during test execution for live status updates in th
 1. `shared/src/types.ts` - All TypeScript interfaces for the domain model
 2. `backend/src/services/TestRunner.ts` - Test execution logic with topological sorting
 3. `frontend/src/pages/FlowEditor.tsx` - Visual flow editing implementation
-4. `backend/src/services/FlowStore*.ts` - Flow persistence and caching logic
+4. `backend/src/services/FlowStore.ts` - Flow persistence and caching logic with MongoDB
 5. `frontend/src/components/FlowTree.tsx` - Project/folder/flow hierarchy component
 
 ## Database
 
-### SQLite (Default)
-Database at `backend/data/flows.db` stores test flows. The schema is auto-created on first run.
-
-### MongoDB (Optional)
-Can be started with Docker Compose. Collections include flows, environments, projects, folders with JSON schema validation.
+### MongoDB
+MongoDB is required and can be started with Docker Compose. Collections include flows, environments, projects, folders with JSON schema validation.
 
 ## Environment Variables
 
@@ -166,8 +159,5 @@ MongoDB is configured with Docker Compose:
 
 ### Service Architecture
 - Dependency injection pattern used throughout backend
-- Store services (FlowStore, ProjectStore, EnvironmentStore) provide data persistence abstraction
-- Both SQLite and MongoDB implementations available for each store
-
-## Migration Notes
-See `docs/MONGODB_MIGRATION.md` for instructions on switching from SQLite to MongoDB.
+- Store services (FlowStore, ProjectStore, EnvironmentStore) provide data persistence with MongoDB
+- Authentication services handle user management and API token authentication
