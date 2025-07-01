@@ -21,7 +21,6 @@ import { projectRoutes } from './routes/projects';
 import { organizationRoutes } from './routes/organizations-mongo';
 import { authRoutes } from './routes/authRoutes';
 import { apiTokenRoutes } from './routes/apiTokenRoutes';
-import { authMiddleware } from './middleware/auth';
 import { combinedAuth } from './middleware/combinedAuth';
 
 async function startServer() {
@@ -91,7 +90,7 @@ async function startServer() {
   const API_BASE_PATH = process.env.API_BASE_PATH || '/api';
 
   // Health check endpoints
-  app.get('/', (req, res) => {
+  app.get('/', (_req, res) => {
     res.json({ 
       message: 'Test Flow Suite API',
       status: 'running',
@@ -100,7 +99,7 @@ async function startServer() {
     });
   });
 
-  app.get('/health', (req, res) => {
+  app.get('/health', (_req, res) => {
     res.json({ 
       status: 'healthy',
       timestamp: new Date().toISOString(),

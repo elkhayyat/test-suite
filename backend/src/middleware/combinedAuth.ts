@@ -1,15 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthService } from '../services/AuthService';
+import { AuthService, JWTPayload } from '../services/AuthService';
 import { ApiTokenServiceMongo } from '../services/ApiTokenService';
 import { authConfig } from '../config/auth';
 
 export interface CombinedAuthRequest extends Request {
-  user?: {
-    id: string;
-    email: string;
-    role: string;
-    organizationId: string;
-  };
+  user?: JWTPayload;
   apiToken?: {
     id: string;
     permissions: string[];
@@ -35,7 +30,7 @@ export const combinedAuth = (authService: AuthService, apiTokenService: ApiToken
           }
 
           req.user = {
-            id: apiToken.userId,
+            userId: apiToken.userId,
             email: 'api-token-user',
             role: 'api',
             organizationId: apiToken.organizationId,

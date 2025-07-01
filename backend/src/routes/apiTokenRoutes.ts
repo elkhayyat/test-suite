@@ -11,7 +11,7 @@ export function apiTokenRoutes(apiTokenService: ApiTokenServiceMongo): Router {
   // Get all tokens for the current user
   router.get('/', async (req: CombinedAuthRequest, res: Response) => {
     try {
-      const tokens = await apiTokenService.getUserTokens(req.user!.id);
+      const tokens = await apiTokenService.getUserTokens(req.user!.userId);
       res.json(tokens);
     } catch (error) {
       console.error('Error fetching tokens:', error);
@@ -47,7 +47,7 @@ export function apiTokenRoutes(apiTokenService: ApiTokenServiceMongo): Router {
         console.log('Starting token generation...');
         
         const { token, plainToken } = await apiTokenService.generateToken(
-          req.user!.id,
+          req.user!.userId,
           req.user!.organizationId,
           name,
           permissions || ['read', 'write', 'execute'],
@@ -74,7 +74,7 @@ export function apiTokenRoutes(apiTokenService: ApiTokenServiceMongo): Router {
     try {
       const success = await apiTokenService.revokeToken(
         req.params.tokenId,
-        req.user!.id
+        req.user!.userId
       );
 
       if (success) {
@@ -93,7 +93,7 @@ export function apiTokenRoutes(apiTokenService: ApiTokenServiceMongo): Router {
     try {
       const success = await apiTokenService.deleteToken(
         req.params.tokenId,
-        req.user!.id
+        req.user!.userId
       );
 
       if (success) {

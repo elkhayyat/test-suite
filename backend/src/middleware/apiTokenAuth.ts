@@ -35,7 +35,7 @@ export const apiTokenAuth = (apiTokenService: ApiTokenServiceMongo) => {
 
       // Set user context from API token
       req.user = {
-        id: apiToken.userId,
+        userId: apiToken.userId,
         email: '', // API tokens don't have email
         role: 'api', // Special role for API tokens
         organizationId: apiToken.organizationId,
