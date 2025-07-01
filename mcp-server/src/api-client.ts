@@ -57,7 +57,7 @@ export class ApiClient {
   }
 
   async getTestRun(id: string): Promise<TestRun> {
-    const { data } = await this.client.get(`/api/test-runs/${id}`);
+    const { data } = await this.client.get(`/api/runs/${id}`);
     return data;
   }
 
@@ -67,11 +67,16 @@ export class ApiClient {
     status?: string;
     limit?: number;
   }): Promise<TestRun[]> {
-    const { data } = await this.client.get('/api/test-runs', { params: filters });
+    const { data } = await this.client.get('/api/runs', { params: filters });
     return data;
   }
 
   // Project operations
+  async getProjects(): Promise<Project[]> {
+    const { data } = await this.client.get('/api/projects');
+    return data;
+  }
+
   async getProject(id: string): Promise<Project> {
     const { data } = await this.client.get(`/api/projects/${id}`);
     return data;
