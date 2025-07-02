@@ -380,4 +380,46 @@ export const api = {
   async deleteApiToken(tokenId: string): Promise<void> {
     await apiClient.delete(`/api-tokens/${tokenId}`);
   },
+
+  // File Management
+  async uploadFile(file: File): Promise<{ success: boolean; file: any }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await apiClient.post('/files/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  async uploadMultipleFiles(files: File[]): Promise<{ success: boolean; files: any[] }> {
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+    
+    const response = await apiClient.post('/files/upload-multiple', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  async listFiles(): Promise<{ files: any[] }> {
+    const response = await apiClient.get('/files/list');
+    return response.data;
+  },
+
+  async deleteFile(filename: string): Promise<{ success: boolean; message: string }> {
+    const response = await apiClient.delete(`/files/${filename}`);
+    return response.data;
+  },
+
+  async downloadFile(filename: string): Promise<Blob> {
+    const response = await apiClient.get(`/files/download/${filename}`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
 };

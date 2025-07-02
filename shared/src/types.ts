@@ -88,10 +88,19 @@ export interface HttpStepConfig {
   url: string;
   headers?: Record<string, string>;
   body?: string | object | null;
+  files?: FileUpload[];
+  formData?: Record<string, string>;
   timeout?: number;
   validateStatus?: (status: number) => boolean;
   retries?: number;
   retryDelay?: number; // delay between retries in ms
+}
+
+export interface FileUpload {
+  fieldName: string;
+  fileName: string;
+  filePath: string;
+  mimeType?: string;
 }
 
 export interface BrowserStepConfig {

@@ -24,6 +24,7 @@ import { projectRoutes } from './routes/projects';
 import { organizationRoutes } from './routes/organizations-mongo';
 import { authRoutes } from './routes/authRoutes';
 import { apiTokenRoutes } from './routes/apiTokenRoutes';
+import { fileRoutes } from './routes/files';
 import { combinedAuth } from './middleware/combinedAuth';
 
 async function startServer() {
@@ -122,6 +123,7 @@ async function startServer() {
   app.use(`${API_BASE_PATH}/projects`, auth, projectRoutes(projectStore, flowStore, organizationStore));
   app.use(`${API_BASE_PATH}/organizations`, auth, organizationRoutes(organizationStore));
   app.use(`${API_BASE_PATH}/api-tokens`, auth, apiTokenRoutes(apiTokenService));
+  app.use(`${API_BASE_PATH}/files`, auth, fileRoutes());
 
   // Proxy endpoint for external API requests (CORS workaround)
   app.get(`${API_BASE_PATH}/proxy`, async (req, res) => {

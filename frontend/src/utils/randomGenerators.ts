@@ -128,6 +128,28 @@ export const GENERATOR_FUNCTIONS = {
     generate: () => {
       return Date.now();
     }
+  },
+  filename: {
+    name: 'Random Filename',
+    description: 'Generate a random filename with extension',
+    syntax: '$random.filename(extension)',
+    example: '$random.filename("jpg")',
+    generate: (extension: string = 'txt') => {
+      const name = GENERATOR_FUNCTIONS.string.generate(8).toLowerCase();
+      return `${name}.${extension}`;
+    }
+  },
+  filepath: {
+    name: 'Random File Path',
+    description: 'Generate a random file path',
+    syntax: '$random.filepath()',
+    example: '$random.filepath()',
+    generate: () => {
+      const directories = ['documents', 'images', 'downloads', 'uploads', 'temp'];
+      const dir = directories[Math.floor(Math.random() * directories.length)];
+      const filename = GENERATOR_FUNCTIONS.filename.generate('txt');
+      return `/tmp/${dir}/${filename}`;
+    }
   }
 };
 

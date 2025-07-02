@@ -5,6 +5,9 @@ import https from 'https';
 import dns from 'dns';
 import { promisify } from 'util';
 import { chromium, Browser, Page } from 'playwright';
+import FormData from 'form-data';
+import fs from 'fs';
+import path from 'path';
 import { TestRun, TestFlow, TestStep, StepResult, SubflowStepConfig, IFlowStore, IEnvironmentStore } from '../../../shared/src/types';
 import { FlowStore } from './FlowStore';
 import { EnvironmentStore } from './EnvironmentStore';
@@ -407,28 +410,67 @@ export class TestRunner {
         family: 4, // Force IPv4 to avoid IPv6 issues
       });
 
-      // Process body - first process random values, then parse if JSON
+      // Handle file uploads with FormData
       let processedBody = config.body;
-      if (typeof config.body === 'string' && config.body.trim()) {
-        // First process random values in the string
-        const bodyWithRandom = processRandomGenerators(config.body);
-        try {
-          // Try to parse as JSON
-          processedBody = JSON.parse(bodyWithRandom);
-        } catch (e) {
-          // Keep as string if not valid JSON
-          processedBody = bodyWithRandom;
+      let requestData: any = null;
+      let requestHeaders = { ...processedHeaders };
+
+      if (config.files && config.files.length > 0) {
+        // Create FormData for file uploads
+        const formData = new FormData();
+        
+        // Add files to FormData
+        for (const file of config.files) {
+          const resolvedPath = path.resolve(file.filePath);
+          if (!fs.existsSync(resolvedPath)) {
+            throw new Error(`File not found: ${file.filePath}`);
+          }
+          
+          const fileStream = fs.createReadStream(resolvedPath);
+          const options: any = { filename: file.fileName };
+          if (file.mimeType) {
+            options.contentType = file.mimeType;
+          }
+          
+          formData.append(file.fieldName, fileStream, options);
         }
-      } else if (config.body && typeof config.body === 'object') {
-        // Process random values in JSON object
-        processedBody = processRandomInJSON(config.body);
+        
+        // Add form data fields if specified
+        if (config.formData) {
+          for (const [key, value] of Object.entries(config.formData)) {
+            const processedValue = processRandomGenerators(String(value));
+            formData.append(key, processedValue);
+          }
+        }
+        
+        requestData = formData;
+        // FormData will set the correct Content-Type header with boundary
+        requestHeaders = { ...requestHeaders, ...formData.getHeaders() };
+      } else {
+        // Process body - first process random values, then parse if JSON
+        if (typeof config.body === 'string' && config.body.trim()) {
+          // First process random values in the string
+          const bodyWithRandom = processRandomGenerators(config.body);
+          try {
+            // Try to parse as JSON
+            processedBody = JSON.parse(bodyWithRandom);
+          } catch (e) {
+            // Keep as string if not valid JSON
+            processedBody = bodyWithRandom;
+          }
+        } else if (config.body && typeof config.body === 'object') {
+          // Process random values in JSON object
+          processedBody = processRandomInJSON(config.body);
+        }
+        
+        requestData = processedBody;
       }
 
       const requestConfig = {
         method: config.method || 'GET',
         url: processedUrl,
-        headers: processedHeaders,
-        data: processedBody,
+        headers: requestHeaders,
+        data: requestData,
         timeout: actualTimeout,
         validateStatus: config.validateStatus || (() => true),
         httpsAgent: httpsAgent,
@@ -446,8 +488,10 @@ export class TestRunner {
         resolvedConfig: {
           url: processedUrl,
           method: config.method || 'GET',
-          headers: processedHeaders,
-          body: processedBody,
+          headers: requestHeaders,
+          body: config.files && config.files.length > 0 ? 'FormData with files' : processedBody,
+          files: config.files,
+          formData: config.formData,
           timeout: actualTimeout,
           retries: config.retries || 0,
           retryDelay: config.retryDelay || 1000,

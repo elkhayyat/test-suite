@@ -1,10 +1,49 @@
 import { HttpStepConfig } from '../../../shared/src/types';
 
+function parseFormData(formValue: string, result: ParsedCurlCommand): void {
+  // Handle file uploads: fieldname=@filename or fieldname=@filename;type=content-type
+  // Handle form data: fieldname=value
+  
+  if (formValue.includes('=@')) {
+    // This is a file upload
+    const [fieldName, fileSpec] = formValue.split('=@', 2);
+    if (fieldName && fileSpec) {
+      let filePath = fileSpec;
+      let mimeType: string | undefined;
+      
+      // Check for content type specification
+      if (fileSpec.includes(';type=')) {
+        const [path, typeSpec] = fileSpec.split(';type=', 2);
+        filePath = path;
+        mimeType = typeSpec;
+      }
+      
+      // Extract filename from path
+      const fileName = filePath.split('/').pop() || filePath;
+      
+      result.files!.push({
+        fieldName: fieldName.trim(),
+        fileName,
+        filePath: filePath.trim(),
+        mimeType
+      });
+    }
+  } else if (formValue.includes('=')) {
+    // This is regular form data
+    const [key, ...valueParts] = formValue.split('=');
+    if (key && valueParts.length > 0) {
+      result.formData![key.trim()] = valueParts.join('=').trim();
+    }
+  }
+}
+
 export interface ParsedCurlCommand {
   method: HttpStepConfig['method'];
   url: string;
   headers: Record<string, string>;
   body?: any;
+  files?: { fieldName: string; fileName: string; filePath: string; mimeType?: string }[];
+  formData?: Record<string, string>;
   timeout?: number;
 }
 
@@ -21,6 +60,8 @@ export function parseCurlCommand(curlCommand: string): ParsedCurlCommand {
     method: 'GET',
     url: '',
     headers: {},
+    files: [],
+    formData: {},
   };
 
   // Split the command into tokens, handling quoted strings
@@ -113,6 +154,16 @@ export function parseCurlCommand(curlCommand: string): ParsedCurlCommand {
       const timeout = parseInt(tokens[i + 1] || '0');
       if (timeout > 0) {
         result.timeout = timeout * 1000; // Convert to milliseconds
+      }
+      i += 2;
+    } else if (token === '-F' || token === '--form') {
+      const formValue = tokens[i + 1];
+      if (formValue) {
+        parseFormData(formValue, result);
+        // If we have form data, assume POST unless explicitly set
+        if (result.method === 'GET') {
+          result.method = 'POST';
+        }
       }
       i += 2;
     } else if (!token.startsWith('-') && !result.url) {
@@ -211,15 +262,37 @@ export function generateCurlCommand(config: HttpStepConfig): string {
     command += ` -X ${config.method}`;
   }
 
-  // Add headers
+  // Add headers (exclude Content-Type if we have files, as it will be set automatically)
   if (config.headers) {
     Object.entries(config.headers).forEach(([key, value]) => {
+      // Skip Content-Type header if we have files (FormData will set it with boundary)
+      if (config.files && config.files.length > 0 && key.toLowerCase() === 'content-type') {
+        return;
+      }
       command += ` -H "${key}: ${value}"`;
     });
   }
 
-  // Add body data
-  if (config.body) {
+  // Add file uploads and form data
+  if (config.files && config.files.length > 0) {
+    config.files.forEach(file => {
+      let formField = `${file.fieldName}=@${file.filePath}`;
+      if (file.mimeType) {
+        formField += `;type=${file.mimeType}`;
+      }
+      command += ` -F "${formField}"`;
+    });
+  }
+
+  // Add form data
+  if (config.formData) {
+    Object.entries(config.formData).forEach(([key, value]) => {
+      command += ` -F "${key}=${value}"`;
+    });
+  }
+
+  // Add body data (only if no files - can't mix body with form data)
+  if (config.body && (!config.files || config.files.length === 0)) {
     const bodyStr = typeof config.body === 'string' 
       ? config.body 
       : JSON.stringify(config.body);

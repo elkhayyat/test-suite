@@ -19,10 +19,15 @@ import {
   Tooltip,
   InputAdornment,
   IconButton,
+  Paper,
+  Grid,
 } from '@mui/material';
 import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
 import { TestStep, HttpStepConfig, BrowserStepConfig, AssertionStepConfig, DelayStepConfig, ConditionStepConfig, SqlStepConfig, SubflowStepConfig, TestFlow } from '../../../shared/src/types';
 import { api } from '../services/api';
 import { parseCurlCommand, generateCurlCommand } from '../utils/curlParser';
@@ -50,11 +55,13 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
   const [copySuccess, setCopySuccess] = useState(false);
   const [randomHelpOpen, setRandomHelpOpen] = useState(false);
   const [stepReferenceNote, setStepReferenceNote] = useState<string | null>(null);
+  const [formDataText, setFormDataText] = useState('');
   
   useEffect(() => {
     if (step.type === 'http') {
       const config = step.config as HttpStepConfig;
       setHeadersText(config.headers ? JSON.stringify(config.headers, null, 2) : '{}');
+      setFormDataText(config.formData ? JSON.stringify(config.formData, null, 2) : '{}');
       
       // Handle body - it might be a string with interpolation or an object
       if (config.body) {
@@ -119,6 +126,8 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
           url: parsed.url,
           headers: parsed.headers,
           body: parsed.body,
+          files: parsed.files,
+          formData: parsed.formData,
           timeout: parsed.timeout || 1000,
         },
       });
@@ -126,6 +135,7 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
       // Update UI state
       setHeadersText(JSON.stringify(parsed.headers, null, 2));
       setBodyText(parsed.body ? (typeof parsed.body === 'string' ? parsed.body : JSON.stringify(parsed.body, null, 2)) : '');
+      setFormDataText(parsed.formData ? JSON.stringify(parsed.formData, null, 2) : '{}');
       
       setCurlDialogOpen(false);
       setCurlCommand('');
@@ -163,6 +173,56 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
       setTimeout(() => setCurlSuccess(false), 3000);
     } catch (error) {
       setCurlError('Failed to generate curl command');
+    }
+  };
+
+  const addFileUpload = () => {
+    const config = step.config as HttpStepConfig;
+    const newFile = {
+      fieldName: '',
+      fileName: '',
+      filePath: '',
+      mimeType: ''
+    };
+    const updatedFiles = [...(config.files || []), newFile];
+    handleChange('files', updatedFiles);
+  };
+
+  const updateFileUpload = (index: number, field: string, value: string) => {
+    const config = step.config as HttpStepConfig;
+    const updatedFiles = [...(config.files || [])];
+    updatedFiles[index] = { ...updatedFiles[index], [field]: value };
+    handleChange('files', updatedFiles);
+  };
+
+  const removeFileUpload = (index: number) => {
+    const config = step.config as HttpStepConfig;
+    const updatedFiles = [...(config.files || [])];
+    updatedFiles.splice(index, 1);
+    handleChange('files', updatedFiles);
+  };
+
+  const handleFileUpload = async (index: number, file: File | undefined) => {
+    if (!file) return;
+
+    try {
+      const result = await api.uploadFile(file);
+      if (result.success) {
+        // Update file fields with uploaded file info
+        updateFileUpload(index, 'filePath', result.file.path);
+        updateFileUpload(index, 'fileName', result.file.originalName);
+        updateFileUpload(index, 'mimeType', result.file.mimeType);
+        
+        // If field name is empty, use the original filename (without extension) as field name
+        const config = step.config as HttpStepConfig;
+        if (config.files && config.files[index] && !config.files[index].fieldName) {
+          const nameWithoutExt = result.file.originalName.replace(/\.[^/.]+$/, '');
+          updateFileUpload(index, 'fieldName', nameWithoutExt);
+        }
+      }
+    } catch (error) {
+      console.error('File upload failed:', error);
+      // You could add a toast notification here
     }
   };
 
@@ -282,6 +342,114 @@ export default function StepConfigPanel({ step, onUpdate, onClose, availableStep
             <HelpOutlineIcon fontSize="small" />
           </IconButton>
         </Box>
+        
+        {/* File Uploads Section */}
+        <Divider sx={{ my: 2 }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <Typography variant="h6">File Uploads</Typography>
+          <Button
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={addFileUpload}
+            variant="outlined"
+          >
+            Add File
+          </Button>
+        </Box>
+        {config.files && config.files.map((file, index) => (
+          <Paper key={index} sx={{ p: 2, mb: 2, backgroundColor: 'grey.50' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="subtitle2">File {index + 1}</Typography>
+              <IconButton size="small" onClick={() => removeFileUpload(index)}>
+                <DeleteIcon />
+              </IconButton>
+            </Box>
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Field Name"
+                  value={file.fieldName}
+                  onChange={(e) => updateFileUpload(index, 'fieldName', e.target.value)}
+                  helperText="Form field name for the file"
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="File Name"
+                  value={file.fileName}
+                  onChange={(e) => updateFileUpload(index, 'fileName', e.target.value)}
+                  helperText="Name to send with the file"
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={8}>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="File Path"
+                    value={file.filePath}
+                    onChange={(e) => updateFileUpload(index, 'filePath', e.target.value)}
+                    helperText="Absolute path to the file on the server"
+                    size="small"
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    component="label"
+                    startIcon={<AttachFileIcon />}
+                    sx={{ minWidth: 100 }}
+                  >
+                    Upload
+                    <input
+                      type="file"
+                      hidden
+                      onChange={(e) => handleFileUpload(index, e.target.files?.[0])}
+                    />
+                  </Button>
+                </Box>
+              </Grid>
+              <Grid item xs={4}>
+                <TextField
+                  fullWidth
+                  label="MIME Type"
+                  value={file.mimeType || ''}
+                  onChange={(e) => updateFileUpload(index, 'mimeType', e.target.value)}
+                  helperText="Optional MIME type"
+                  size="small"
+                />
+              </Grid>
+            </Grid>
+          </Paper>
+        ))}
+        
+        {/* Form Data Section */}
+        {config.files && config.files.length > 0 && (
+          <>
+            <TextField
+              fullWidth
+              label="Form Data (JSON)"
+              value={formDataText}
+              onChange={(e) => setFormDataText(e.target.value)}
+              onBlur={() => {
+                try {
+                  const parsed = JSON.parse(formDataText || '{}');
+                  handleChange('formData', parsed);
+                } catch (e) {
+                  // Keep the text as is if invalid JSON
+                }
+              }}
+              multiline
+              rows={3}
+              margin="normal"
+              helperText='Additional form fields as JSON, e.g., {"key": "value"}'
+            />
+          </>
+        )}
+        
+        <Divider sx={{ my: 2 }} />
         <TextField
           fullWidth
           label="Timeout (ms)"
