@@ -70,3 +70,5 @@ frontend/.vite/
 
 # Shared package outputs
 shared/dist/
+
+backend/uploads/
